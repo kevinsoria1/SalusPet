@@ -16,9 +16,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-
 import com.example.saluspet.features.pets.presentation.PetHomeScreen
 import com.example.saluspet.features.pets.presentation.PetHistoryScreen
+import com.example.saluspet.features.pets.presentation.PetViewModel
 import com.example.saluspet.features.calendar.presentation.CalendarScreen
 import com.example.saluspet.features.auth.presentation.ProfileScreen
 import com.example.saluspet.features.calendar.presentation.CalendarViewModel
@@ -34,8 +34,10 @@ sealed class BottomNavItem(val route: String, val icon: ImageVector, val title: 
 @Composable
 fun MainScreen(onLogout: () -> Unit) {
     val bottomNavController = rememberNavController()
-    // Creamos el ViewModel aquí para que sea compartido por todas las pestañas
+
+    // ViewModels compartidos por las pestañas
     val calendarViewModel: CalendarViewModel = viewModel()
+    val petViewModel: PetViewModel = viewModel() // <-- NUEVO VIEWMODEL
 
     Scaffold(
         bottomBar = { SalusPetBottomBar(navController = bottomNavController) }
@@ -46,15 +48,28 @@ fun MainScreen(onLogout: () -> Unit) {
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(BottomNavItem.Home.route) {
-                // Pasamos el viewModel a la Home
-                PetHomeScreen(calendarViewModel = calendarViewModel)
+                // Pasamos AMBOS ViewModels a la Home (para avisos de agenda + lista de mascotas)
+                PetHomeScreen(
+                    calendarViewModel = calendarViewModel,
+                    petViewModel = petViewModel
+                )
             }
-            composable(BottomNavItem.History.route) { PetHistoryScreen() }
+
+            composable(BottomNavItem.History.route) {
+                PetHistoryScreen()
+            }
+
             composable(BottomNavItem.Calendar.route) {
-                // Pasamos el MISMO viewModel a la Agenda
                 CalendarScreen(calendarViewModel = calendarViewModel)
             }
-            composable(BottomNavItem.Profile.route) { ProfileScreen(onLogout = onLogout) }
+
+            composable(BottomNavItem.Profile.route) {
+                // Pasamos el petViewModel al perfil para ver los detalles
+                ProfileScreen(
+                    onLogout = onLogout,
+                    petViewModel = petViewModel
+                )
+            }
         }
     }
 }

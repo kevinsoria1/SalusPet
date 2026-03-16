@@ -63,6 +63,8 @@ dependencies {
     // 🔄 LIFECYCLE & VIEWMODEL: Para conectar tus datos con la interfaz
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation("com.vanniktech:android-image-cropper:4.5.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
