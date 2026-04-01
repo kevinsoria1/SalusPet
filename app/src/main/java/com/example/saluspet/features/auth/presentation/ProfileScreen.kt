@@ -1,12 +1,15 @@
 package com.example.saluspet.features.auth.presentation
 
-import android.net.Uri
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CameraAlt
@@ -23,39 +26,58 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import com.example.saluspet.features.pets.presentation.PetViewModel
 import com.example.saluspet.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-// Modelo de datos temporal para el Usuario (Hasta que tengamos Base de Datos)
-data class Usuario(
-    val nombre: String = "Juan",
-    val apellidos: String = "Pérez García",
-    val correo: String = "juan.perez@email.com",
-    val telefono: String = "+34 600 123 456",
-    val fechaNacimiento: String = "15/05/1990",
+// Modelo de datos para la pantalla de Perfil (Sin datos por defecto)
+data class UsuarioPerfil(
+    val nombre: String,
+    val apellidos: String,
+    val correo: String,
+    val telefono: String,
+    val fechaNacimiento: String,
     val fotoUri: String? = null
 )
 
 @Composable
 fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
-    // Estado del usuario actual
-    var usuario by remember { mutableStateOf(Usuario()) }
+    val context = LocalContext.current
+    val sharedPreferences = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
 
-    // Estado para controlar si mostramos el diálogo de edición
+    // Cargamos los datos limpios de la memoria (vacíos por defecto)
+    var usuario by remember {
+        mutableStateOf(
+            UsuarioPerfil(
+                nombre = sharedPreferences.getString("nombre", "") ?: "",
+                apellidos = sharedPreferences.getString("apellidos", "") ?: "",
+                correo = sharedPreferences.getString("correo", "") ?: "",
+                telefono = sharedPreferences.getString("telefono", "") ?: "",
+                fechaNacimiento = sharedPreferences.getString("fecha_nacimiento", "") ?: "",
+                fotoUri = sharedPreferences.getString("foto_uri", null)
+            )
+        )
+    }
+
     var showEditDialog by remember { mutableStateOf(false) }
 
-    // Lanzador para cambiar la foto de perfil del usuario (Con recorte 1:1)
     val imageCropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
             result.uriContent?.let { uri ->
-                usuario = usuario.copy(fotoUri = uri.toString())
+                val uriString = uri.toString()
+                usuario = usuario.copy(fotoUri = uriString)
+                sharedPreferences.edit().putString("foto_uri", uriString).apply()
             }
         }
     }
@@ -79,21 +101,22 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Mi Perfil", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- FOTO DE PERFIL DEL USUARIO ---
+        // --- FOTO DE PERFIL ---
         Box(contentAlignment = Alignment.BottomEnd) {
             Surface(
                 modifier = Modifier
                     .size(120.dp)
                     .clip(CircleShape)
+                    .border(3.dp, PastelGreenPrimary, CircleShape)
                     .clickable { lanzarRecorteUsuario() },
-                color = PastelBlueBackgroundLighter,
-                border = androidx.compose.foundation.BorderStroke(3.dp, PastelGreenPrimary)
+                color = PastelBlueBackgroundLighter
             ) {
                 if (usuario.fotoUri != null) {
                     AsyncImage(
@@ -111,7 +134,6 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
                     )
                 }
             }
-            // Icono de cámara superpuesto
             Surface(
                 modifier = Modifier
                     .size(36.dp)
@@ -129,8 +151,14 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text("${usuario.nombre} ${usuario.apellidos}", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
-        Text("Tutor de ${petViewModel.listaMascotas.size} mascota(s)", fontSize = 14.sp, color = PastelGreenPrimary, fontWeight = FontWeight.Medium)
+
+        if (usuario.nombre.isBlank()) {
+            Text("¡Bienvenido/a!", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+            Text("Toca 'Editar Datos' para configurar tu perfil", fontSize = 14.sp, color = TextColorGray)
+        } else {
+            Text("${usuario.nombre} ${usuario.apellidos}", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+            Text("Tutor de ${petViewModel.listaMascotas.size} mascota(s)", fontSize = 14.sp, color = PastelGreenPrimary, fontWeight = FontWeight.Medium)
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -142,17 +170,17 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                ProfileInfoRow(icon = Icons.Filled.Email, label = "Correo Electrónico", value = usuario.correo)
+                ProfileInfoRow(icon = Icons.Filled.Email, label = "Correo Electrónico", value = usuario.correo.ifBlank { "No especificado" })
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.5f))
 
-                ProfileInfoRow(icon = Icons.Filled.Phone, label = "Teléfono", value = usuario.telefono)
+                ProfileInfoRow(icon = Icons.Filled.Phone, label = "Teléfono", value = usuario.telefono.ifBlank { "No especificado" })
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.5f))
 
-                ProfileInfoRow(icon = Icons.Filled.Cake, label = "Fecha de Nacimiento", value = usuario.fechaNacimiento)
+                ProfileInfoRow(icon = Icons.Filled.Cake, label = "Fecha de Nacimiento", value = usuario.fechaNacimiento.ifBlank { "No especificada" })
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(32.dp))
 
         // --- BOTONES DE ACCIÓN ---
         OutlinedButton(
@@ -168,7 +196,11 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-            onClick = onLogout,
+            onClick = {
+                // 🧹 LIMPIEZA TOTAL: Borramos la memoria al cerrar sesión
+                sharedPreferences.edit().clear().apply()
+                onLogout()
+            },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCCCC)),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -178,28 +210,32 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
         }
     }
 
-    // --- DIÁLOGO DE EDICIÓN DE PERFIL ---
     if (showEditDialog) {
-        UsuarioEditDialog(
+        UsuarioEditDialogPremium(
             usuarioActual = usuario,
             onDismiss = { showEditDialog = false },
             onSave = { usuarioEditado ->
                 usuario = usuarioEditado
+
+                // Guardamos los datos nuevos
+                sharedPreferences.edit()
+                    .putString("nombre", usuarioEditado.nombre)
+                    .putString("apellidos", usuarioEditado.apellidos)
+                    .putString("correo", usuarioEditado.correo)
+                    .putString("telefono", usuarioEditado.telefono)
+                    .putString("fecha_nacimiento", usuarioEditado.fechaNacimiento)
+                    .apply()
+
                 showEditDialog = false
             }
         )
     }
 }
 
-// Componente reutilizable para cada fila de información
 @Composable
 fun ProfileInfoRow(icon: ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier.size(40.dp),
-            shape = CircleShape,
-            color = PastelBlueBackgroundLighter.copy(alpha = 0.3f)
-        ) {
+        Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = PastelBlueBackgroundLighter.copy(alpha = 0.5f)) {
             Icon(icon, contentDescription = null, modifier = Modifier.padding(8.dp), tint = PastelGreenPrimary)
         }
         Spacer(modifier = Modifier.width(16.dp))
@@ -210,35 +246,100 @@ fun ProfileInfoRow(icon: ImageVector, label: String, value: String) {
     }
 }
 
-// Diálogo para editar los datos del usuario
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsuarioEditDialog(usuarioActual: Usuario, onDismiss: () -> Unit, onSave: (Usuario) -> Unit) {
+fun UsuarioEditDialogPremium(usuarioActual: UsuarioPerfil, onDismiss: () -> Unit, onSave: (UsuarioPerfil) -> Unit) {
     var nombre by remember { mutableStateOf(usuarioActual.nombre) }
     var apellidos by remember { mutableStateOf(usuarioActual.apellidos) }
     var correo by remember { mutableStateOf(usuarioActual.correo) }
     var telefono by remember { mutableStateOf(usuarioActual.telefono) }
     var fechaNacimiento by remember { mutableStateOf(usuarioActual.fechaNacimiento) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Editar Perfil") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = apellidos, onValueChange = { apellidos = it }, label = { Text("Apellidos") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = correo, onValueChange = { correo = it }, label = { Text("Correo Electrónico") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = telefono, onValueChange = { telefono = it }, label = { Text("Teléfono") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = fechaNacimiento, onValueChange = { fechaNacimiento = it }, label = { Text("Fecha de Nacimiento") }, modifier = Modifier.fillMaxWidth())
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+    val fieldBackgroundColor = Color(0xFFF8F9FA)
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        fechaNacimiento = sdf.format(Date(millis))
+                    }
+                }) { Text("Aceptar") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
+        ) { DatePicker(state = datePickerState) }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter),
+            elevation = CardDefaults.cardElevation(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.size(64.dp)) {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Tus Datos", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                OutlinedTextField(
+                    value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = apellidos, onValueChange = { apellidos = it }, label = { Text("Apellidos") },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = correo, onValueChange = { correo = it }, label = { Text("Correo Electrónico") },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = telefono, onValueChange = { telefono = it }, label = { Text("Teléfono") },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = fechaNacimiento, onValueChange = {}, readOnly = true, label = { Text("Fecha de Nacimiento") },
+                    modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }, enabled = false,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = fieldBackgroundColor, disabledBorderColor = Color.Transparent, disabledLabelColor = TextColorGray)
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSave(UsuarioPerfil(nombre, apellidos, correo, telefono, fechaNacimiento, usuarioActual.fotoUri)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("Guardar", color = TextColorDark, fontWeight = FontWeight.Bold) }
+                }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(Usuario(nombre, apellidos, correo, telefono, fechaNacimiento, usuarioActual.fotoUri))
-                },
-                enabled = nombre.isNotBlank() && correo.isNotBlank()
-            ) { Text("Guardar") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
+        }
+    }
 }

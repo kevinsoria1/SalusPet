@@ -27,23 +27,19 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(navController = navController, startDestination = "login") {
 
-                        // 1. Pantalla de Login
+                        // 1. Pantalla de Login (que ahora también incluye el Registro)
                         composable(route = "login") {
                             LoginScreen(
-                                onNavigateToHome = {
+                                onLoginSuccess = { // ⬅️ ¡AQUÍ ESTÁ EL CAMBIO!
                                     navController.navigate("main") {
                                         popUpTo("login") { inclusive = true }
                                     }
-                                },
-                                onNavigateToRegister = {
-                                    // Futura pantalla de registro
                                 }
                             )
                         }
 
-                        // 2. Contenedor Principal
+                        // 2. Contenedor Principal con la barra de navegación inferior
                         composable(route = "main") {
-                            // Pasamos la lógica de Logout aquí
                             MainScreen(onLogout = {
                                 navController.navigate("login") {
                                     popUpTo("main") { inclusive = true }

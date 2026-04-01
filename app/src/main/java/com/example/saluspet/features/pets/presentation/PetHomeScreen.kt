@@ -1,20 +1,24 @@
 package com.example.saluspet.features.pets.presentation
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,55 +27,86 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
+import com.example.saluspet.R
 import com.example.saluspet.features.calendar.presentation.CalendarViewModel
 import com.example.saluspet.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewModel) {
+    val context = LocalContext.current
+
     val mascotas = petViewModel.listaMascotas
     val proximasCitas = calendarViewModel.listaCitas
 
     var showDialog by remember { mutableStateOf(false) }
     var mascotaAEditar by remember { mutableStateOf<Pet?>(null) }
-
     var petSeleccionado by remember { mutableStateOf<Pet?>(null) }
-
-    // Estado para saber a qué mascota le vamos a recortar la foto
     var mascotaParaFoto by remember { mutableStateOf<Pet?>(null) }
 
-    // --- NUEVO: LANZADOR DE RECORTE DE IMAGEN ESTILO WHATSAPP ---
+    // 🔥 MODIFICADO: Añadido el BitmapFactory.compress() para que la foto no sea gigante y rompa el servidor
+    fun uriToBase64(context: android.content.Context, uriString: String): String? {
+        return try {
+            val uri = android.net.Uri.parse(uriString)
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+
+            if (bitmap != null) {
+                val outputStream = java.io.ByteArrayOutputStream()
+                // Comprime la imagen al 40% de calidad para no saturar la red
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 40, outputStream)
+                val bytes = outputStream.toByteArray()
+                Base64.encodeToString(bytes, Base64.NO_WRAP)
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     val imageCropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
             result.uriContent?.let { uri ->
-                mascotaParaFoto?.let { pet ->
-                    petViewModel.actualizarFotoPet(pet, uri.toString())
-                    // Si estamos dentro de la vista de detalle, actualizamos los datos en vivo
-                    if (petSeleccionado?.id == pet.id) {
-                        petSeleccionado = petViewModel.listaMascotas.find { it.id == pet.id }
+                // 1. Convertimos la foto recortada a Base64 INMEDIATAMENTE
+                val fotoBase64 = uriToBase64(context, uri.toString())
+
+                if (fotoBase64 != null) {
+                    mascotaParaFoto?.let { pet ->
+                        // 2. Le mandamos al ViewModel el contexto y la foto YA EN BASE64
+                        petViewModel.actualizarFotoPet(context, pet, fotoBase64)
+
+                        if (petSeleccionado?.id == pet.id) {
+                            petSeleccionado = petViewModel.listaMascotas.find { it.id == pet.id }
+                        }
                     }
                 }
             }
         }
     }
 
-    // Función auxiliar para abrir la galería y luego el recortador
     fun lanzarRecorte(pet: Pet) {
         mascotaParaFoto = pet
         imageCropLauncher.launch(
             CropImageContractOptions(
-                uri = null, // null abre la galería para elegir una foto nueva
+                uri = null,
                 cropImageOptions = CropImageOptions(
                     imageSourceIncludeGallery = true,
-                    imageSourceIncludeCamera = false, // Solo galería por simplicidad de permisos
-                    fixAspectRatio = true, // Obliga a que el recorte sea un cuadrado (1:1)
+                    imageSourceIncludeCamera = false,
+                    fixAspectRatio = true,
                     aspectRatioX = 1,
                     aspectRatioY = 1
                 )
@@ -79,29 +114,20 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
         )
     }
 
-    // 1. VISTA DE DETALLE (CUANDO HAY UNA MASCOTA SELECCIONADA)
     if (petSeleccionado != null) {
         val petActualizado = mascotas.find { it.id == petSeleccionado!!.id }
-
         if (petActualizado == null) {
             petSeleccionado = null
         } else {
             PetDetailView(
                 pet = petActualizado,
                 onBack = { petSeleccionado = null },
-                onEdit = {
-                    mascotaAEditar = petActualizado
-                    showDialog = true
-                },
-                onDelete = {
-                    petViewModel.eliminarMascota(petActualizado)
-                    petSeleccionado = null
-                },
-                onUpdatePhoto = { lanzarRecorte(petActualizado) } // Llamamos a nuestro recortador
+                onEdit = { mascotaAEditar = petActualizado; showDialog = true },
+                onDelete = { petViewModel.eliminarMascota(petActualizado); petSeleccionado = null },
+                onUpdatePhoto = { lanzarRecorte(petActualizado) }
             )
         }
     } else {
-        // 2. VISTA DE INICIO (LISTA DE MASCOTAS)
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(
@@ -111,32 +137,22 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                 ) { Icon(Icons.Filled.Add, contentDescription = "Añadir Mascota") }
             }
         ) { padding ->
-            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-                Text("¡Hola de nuevo!", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
-                Text("Gestiona tus compañeros peludos", fontSize = 16.sp, color = TextColorGray)
-                Spacer(modifier = Modifier.height(20.dp))
+            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp)) {
 
-                if (proximasCitas.isNotEmpty()) {
-                    val proxima = proximasCitas.first()
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFFFBC02D))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(text = "Próxima cita: ${proxima.titulo}", fontWeight = FontWeight.Bold)
-                                Text(text = "${proxima.fecha} a las ${proxima.hora}", fontSize = 14.sp)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
+                // --- LOGO COMPACTO ---
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 0.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo_saluspet1),
+                        contentDescription = "Logo SalusPet",
+                        modifier = Modifier.height(105.dp)
+                    )
                 }
 
-                Text("Mis Mascotas", fontWeight = FontWeight.Bold, color = TextColorDark)
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("Mis Mascotas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+                Spacer(modifier = Modifier.height(8.dp))
 
                 if (mascotas.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -145,10 +161,7 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(mascotas) { mascota ->
-                            MascotaCardGrande(
-                                pet = mascota,
-                                onClick = { petSeleccionado = mascota }
-                            )
+                            MascotaCardGrande(pet = mascota, onClick = { petSeleccionado = mascota })
                         }
                     }
                 }
@@ -156,57 +169,112 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
         }
     }
 
-    // 3. DIÁLOGO PARA CREAR/EDITAR (Mantiene la información)
     if (showDialog) {
-        MascotaDialog(
+        MascotaDialogPremium(
             petExistente = mascotaAEditar,
             onDismiss = { showDialog = false },
             onSave = { nuevaMascota ->
-                if (mascotaAEditar == null) petViewModel.agregarMascota(nuevaMascota)
-                else petViewModel.editarMascota(mascotaAEditar!!, nuevaMascota)
+                if (mascotaAEditar == null) {
+                    // --- 1. PROCESAR FECHA ---
+                    val fechaParaBackend = try {
+                        val inFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        val outFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        if (nuevaMascota.edad.isNotBlank()) {
+                            outFormat.format(inFormat.parse(nuevaMascota.edad)!!)
+                        } else {
+                            "2026-01-01"
+                        }
+                    } catch (e: Exception) {
+                        "2026-01-01"
+                    }
+
+                    // --- 2. PROCESAR PESO ---
+                    val pesoLimpio = nuevaMascota.peso.replace(",", ".").toDoubleOrNull() ?: 1.0
+
+                    // --- 3. PROCESAR FOTO DE FORMA SEGURA ---
+                    val fotoParaEnviar = nuevaMascota.fotoBase64?.let { foto ->
+                        if (foto.startsWith("content://") || foto.startsWith("file://")) {
+                            // Es una URI local que acaba de seleccionar, la convertimos a Base64
+                            uriToBase64(context, foto)
+                        } else {
+                            // Ya es Base64 (vino de la base de datos), la dejamos intacta
+                            foto
+                        }
+                    }
+
+                    // --- 4. ENVIAR A TU API (AARÓN) ---
+                    petViewModel.crearMascotaEnServidor(
+                        context = context,
+                        nombre = nuevaMascota.nombre,
+                        especie = nuevaMascota.especie,
+                        peso = pesoLimpio,
+                        fechaNac = fechaParaBackend,
+                        genero = nuevaMascota.sexo,
+                        fotoBase64 = fotoParaEnviar // ⬅️ Ya lo tenías perfecto
+                    )
+                } else {
+                    // Edición local
+                    petViewModel.editarMascota(mascotaAEditar!!, nuevaMascota)
+                }
                 showDialog = false
             }
         )
     }
 }
 
+// 📸 NUEVO COMPONENTE: Decodifica el Base64 y lo pinta sin dar errores
+@Composable
+fun ImagenDecodificada(fotoString: String?, modifier: Modifier = Modifier, fallbackSize: Int = 64) {
+    if (fotoString.isNullOrBlank()) {
+        Box(modifier = modifier.background(PastelBlueBackgroundLighter), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Pets, contentDescription = null, modifier = Modifier.size(fallbackSize.dp), tint = Color.White)
+        }
+        return
+    }
+
+    // Si es una ruta normal (URI, http, etc), usamos AsyncImage
+    if (fotoString.startsWith("content://") || fotoString.startsWith("http")) {
+        AsyncImage(model = fotoString, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
+        return
+    }
+
+    // Si es Base64 puro, lo transformamos en un Bitmap para Jetpack Compose
+    val bitmap = remember(fotoString) {
+        try {
+            val cleanBase64 = if (fotoString.contains(",")) fotoString.split(",")[1] else fotoString
+            val imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)?.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    if (bitmap != null) {
+        Image(bitmap = bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
+    } else {
+        Box(modifier = modifier.background(PastelBlueBackgroundLighter), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Pets, contentDescription = null, modifier = Modifier.size(fallbackSize.dp), tint = Color.White)
+        }
+    }
+}
+
 @Composable
 fun MascotaCardGrande(pet: Pet, onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-            if (pet.fotoUri != null) {
-                AsyncImage(
-                    model = pet.fotoUri,
-                    contentDescription = "Foto de ${pet.nombre}",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop // Ahora el crop se ajustará perfecto al cuadrado recortado
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize().background(PastelBlueBackgroundLighter), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Pets, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.White)
-                }
-            }
 
-            Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                        startY = 200f
-                    )
-                )
-            )
+            // 🔥 REEMPLAZO MAGICO AQUI 🔥
+            ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize())
 
+            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)), startY = 200f)))
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
                 Text(pet.nombre, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Color.White)
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row {
                     InfoChip(pet.especie)
                     Spacer(modifier = Modifier.width(8.dp))
                     InfoChip(pet.sexo)
@@ -220,66 +288,40 @@ fun MascotaCardGrande(pet: Pet, onClick: () -> Unit) {
 fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onUpdatePhoto: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-            if (pet.fotoUri != null) {
-                AsyncImage(
-                    model = pet.fotoUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize().background(PastelBlueBackgroundLighter), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Pets, contentDescription = null, modifier = Modifier.size(100.dp), tint = Color.White)
-                }
+
+            // 🔥 REEMPLAZO MAGICO AQUI TAMBIÉN 🔥
+            ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize(), fallbackSize = 100)
+
+            IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
             }
-
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)
-            ) { Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White) }
         }
-
         Column(modifier = Modifier.padding(24.dp)) {
             Text(pet.nombre, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
             Spacer(modifier = Modifier.height(24.dp))
-
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 DetalleItem("Especie", pet.especie)
                 DetalleItem("Sexo", pet.sexo)
-                DetalleItem("Edad", pet.edad)
+                DetalleItem("F. Nacim.", pet.edad)
                 DetalleItem("Peso", "${pet.peso} kg")
             }
-
             Spacer(modifier = Modifier.weight(1f))
-
-            Button(
-                onClick = onUpdatePhoto, // Lanza la función de recorte
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary)
-            ) {
+            Button(onClick = onUpdatePhoto, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary)) {
                 Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Cambiar Foto de Perfil")
+                Text("Cambiar Foto de Perfil", color = TextColorDark)
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
             OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Edit, contentDescription = null, tint = TextColorDark)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Editar Información", color = TextColorDark)
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = onDelete,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCCCC))
-            ) {
+            Button(onClick = onDelete, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCCCC))) {
                 Icon(Icons.Filled.Delete, contentDescription = null, tint = Color.Red)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Eliminar Mascota", color = Color.Red)
+                Text("Eliminar Mascota", color = Color.Red, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -300,40 +342,93 @@ fun DetalleItem(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MascotaDialog(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet) -> Unit) {
+fun MascotaDialogPremium(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet) -> Unit) {
     var nombre by remember { mutableStateOf(petExistente?.nombre ?: "") }
     var especie by remember { mutableStateOf(petExistente?.especie ?: "") }
-    var sexo by remember { mutableStateOf(petExistente?.sexo ?: "") }
     var edad by remember { mutableStateOf(petExistente?.edad ?: "") }
     var peso by remember { mutableStateOf(petExistente?.peso ?: "") }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (petExistente == null) "Nueva Mascota" else "Editar Mascota") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") })
-                OutlinedTextField(value = especie, onValueChange = { especie = it }, label = { Text("Especie") })
-                OutlinedTextField(value = sexo, onValueChange = { sexo = it }, label = { Text("Sexo") })
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = edad, onValueChange = { edad = it }, label = { Text("Edad") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = peso, onValueChange = { peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f))
+    var sexo by remember { mutableStateOf(petExistente?.sexo ?: "") }
+    var expanded by remember { mutableStateOf(false) }
+    val opcionesSexo = listOf("Macho", "Hembra", "Sin respuesta")
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+
+    val fieldBackgroundColor = Color(0xFFF8F9FA)
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        edad = sdf.format(Date(millis))
+                    }
+                }) { Text("Aceptar") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
+        ) { DatePicker(state = datePickerState) }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = PastelGreenPrimary),
+            elevation = CardDefaults.cardElevation(8.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(shape = RoundedCornerShape(16.dp), color = PastelBlueBackgroundLighter, modifier = Modifier.size(64.dp)) {
+                    Icon(Icons.Filled.Pets, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(if (petExistente == null) "Nueva Mascota" else "Editar Mascota", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre de la mascota") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(value = especie, onValueChange = { especie = it }, label = { Text("Especie (Perro, Gato...)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = sexo, onValueChange = {}, readOnly = true, label = { Text("Sexo") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = Color.White) {
+                        opcionesSexo.forEach { seleccion -> DropdownMenuItem(text = { Text(seleccion) }, onClick = { sexo = seleccion; expanded = false }) }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = edad, onValueChange = { }, readOnly = true, label = { Text("F. Nacimiento") },
+                        modifier = Modifier.weight(1f).clickable { showDatePicker = true }, enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledBorderColor = Color.Transparent, disabledContainerColor = fieldBackgroundColor, disabledLabelColor = TextColorGray)
+                    )
+                    OutlinedTextField(value = peso, onValueChange = { peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSave(Pet(id = petExistente?.id ?: System.currentTimeMillis(), nombre = nombre, especie = especie, sexo = sexo, edad = edad, peso = peso, fotoBase64 = petExistente?.fotoBase64)) },
+                        enabled = nombre.isNotBlank() && especie.isNotBlank() && sexo.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary), shape = RoundedCornerShape(16.dp)
+                    ) { Text("Guardar", color = TextColorDark, fontWeight = FontWeight.Bold) }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(Pet(
-                        id = petExistente?.id ?: System.currentTimeMillis(),
-                        nombre = nombre, especie = especie, sexo = sexo, edad = edad, peso = peso,
-                        fotoUri = petExistente?.fotoUri
-                    ))
-                },
-                enabled = nombre.isNotBlank() && especie.isNotBlank()
-            ) { Text("Guardar") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
+        }
+    }
 }

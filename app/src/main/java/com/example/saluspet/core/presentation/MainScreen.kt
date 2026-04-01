@@ -16,12 +16,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+
 import com.example.saluspet.features.pets.presentation.PetHomeScreen
 import com.example.saluspet.features.pets.presentation.PetHistoryScreen
 import com.example.saluspet.features.pets.presentation.PetViewModel
 import com.example.saluspet.features.calendar.presentation.CalendarScreen
-import com.example.saluspet.features.auth.presentation.ProfileScreen
 import com.example.saluspet.features.calendar.presentation.CalendarViewModel
+import com.example.saluspet.features.auth.presentation.ProfileScreen
 import com.example.saluspet.ui.theme.*
 
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val title: String) {
@@ -35,9 +36,9 @@ sealed class BottomNavItem(val route: String, val icon: ImageVector, val title: 
 fun MainScreen(onLogout: () -> Unit) {
     val bottomNavController = rememberNavController()
 
-    // ViewModels compartidos por las pestañas
+    // 1. Compose se encarga de instanciar y mantener vivos los ViewModels
     val calendarViewModel: CalendarViewModel = viewModel()
-    val petViewModel: PetViewModel = viewModel() // <-- NUEVO VIEWMODEL
+    val petViewModel: PetViewModel = viewModel()
 
     Scaffold(
         bottomBar = { SalusPetBottomBar(navController = bottomNavController) }
@@ -64,7 +65,7 @@ fun MainScreen(onLogout: () -> Unit) {
             }
 
             composable(BottomNavItem.Profile.route) {
-                // Pasamos el petViewModel al perfil para ver los detalles
+                // Pasamos el petViewModel al perfil para ver los detalles y el contador
                 ProfileScreen(
                     onLogout = onLogout,
                     petViewModel = petViewModel
