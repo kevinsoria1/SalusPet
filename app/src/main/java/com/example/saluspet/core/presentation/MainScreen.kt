@@ -18,11 +18,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 import com.example.saluspet.features.pets.presentation.PetHomeScreen
-import com.example.saluspet.features.pets.presentation.PetHistoryScreen
 import com.example.saluspet.features.pets.presentation.PetViewModel
 import com.example.saluspet.features.calendar.presentation.CalendarScreen
 import com.example.saluspet.features.calendar.presentation.CalendarViewModel
+import com.example.saluspet.features.clinics.presentation.HistorialScreen // ⬅️ Nuevo
+import com.example.saluspet.features.clinics.presentation.HistorialViewModel // ⬅️ Nuevo
 import com.example.saluspet.features.auth.presentation.ProfileScreen
+import com.example.saluspet.features.auth.presentation.ProfileViewModel
 import com.example.saluspet.ui.theme.*
 
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val title: String) {
@@ -39,6 +41,8 @@ fun MainScreen(onLogout: () -> Unit) {
     // 1. Compose se encarga de instanciar y mantener vivos los ViewModels
     val calendarViewModel: CalendarViewModel = viewModel()
     val petViewModel: PetViewModel = viewModel()
+    val historialViewModel: HistorialViewModel = viewModel()
+    val profileViewModel: ProfileViewModel = viewModel()
 
     Scaffold(
         bottomBar = { SalusPetBottomBar(navController = bottomNavController) }
@@ -57,18 +61,25 @@ fun MainScreen(onLogout: () -> Unit) {
             }
 
             composable(BottomNavItem.History.route) {
-                PetHistoryScreen()
+                HistorialScreen(
+                    viewModel = historialViewModel,
+                    petViewModel = petViewModel
+                )
             }
 
             composable(BottomNavItem.Calendar.route) {
-                CalendarScreen(calendarViewModel = calendarViewModel)
+                CalendarScreen(
+                    calendarViewModel = calendarViewModel,
+                    petViewModel = petViewModel
+                )
             }
 
             composable(BottomNavItem.Profile.route) {
                 // Pasamos el petViewModel al perfil para ver los detalles y el contador
                 ProfileScreen(
                     onLogout = onLogout,
-                    petViewModel = petViewModel
+                    petViewModel = petViewModel,
+                    profileViewModel = profileViewModel // ⬅️ Pásale el nuevo
                 )
             }
         }

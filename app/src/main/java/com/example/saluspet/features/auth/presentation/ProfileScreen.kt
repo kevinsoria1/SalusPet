@@ -11,7 +11,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
@@ -36,27 +35,32 @@ import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import com.example.saluspet.features.pets.presentation.PetViewModel
+import com.example.saluspet.features.auth.data.Usuario
 import com.example.saluspet.ui.theme.*
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-// Modelo de datos para la pantalla de Perfil (Sin datos por defecto)
+// Modelo de datos visual (Sin la fecha de nacimiento)
 data class UsuarioPerfil(
     val nombre: String,
     val apellidos: String,
     val correo: String,
     val telefono: String,
-    val fechaNacimiento: String,
     val fotoUri: String? = null
 )
 
 @Composable
-fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
+fun ProfileScreen(
+    onLogout: () -> Unit,
+    petViewModel: PetViewModel,
+    profileViewModel: ProfileViewModel
+) {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
 
-    // Cargamos los datos limpios de la memoria (vacíos por defecto)
+    // 🚀 1. Pedir los datos al servidor nada más abrir la pantalla
+    LaunchedEffect(Unit) {
+        profileViewModel.cargarPerfil(context)
+    }
+
     var usuario by remember {
         mutableStateOf(
             UsuarioPerfil(
@@ -64,10 +68,29 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
                 apellidos = sharedPreferences.getString("apellidos", "") ?: "",
                 correo = sharedPreferences.getString("correo", "") ?: "",
                 telefono = sharedPreferences.getString("telefono", "") ?: "",
-                fechaNacimiento = sharedPreferences.getString("fecha_nacimiento", "") ?: "",
                 fotoUri = sharedPreferences.getString("foto_uri", null)
             )
         )
+    }
+
+    // 🌐 2. Cuando el servidor responda, actualizamos la pantalla automáticamente
+    LaunchedEffect(profileViewModel.usuarioData) {
+        profileViewModel.usuarioData?.let { usuarioBD ->
+            usuario = usuario.copy(
+                nombre = usuarioBD.nombre ?: "",
+                apellidos = usuarioBD.apellidos ?: "",
+                correo = usuarioBD.email ?: "",
+                telefono = usuarioBD.telefono ?: ""
+            )
+
+            // Refrescamos las memorias exclusivas del móvil (foto)
+            sharedPreferences.edit()
+                .putString("nombre", usuarioBD.nombre)
+                .putString("apellidos", usuarioBD.apellidos)
+                .putString("correo", usuarioBD.email)
+                .putString("telefono", usuarioBD.telefono)
+                .apply()
+        }
     }
 
     var showEditDialog by remember { mutableStateOf(false) }
@@ -108,7 +131,6 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
         Text("Mi Perfil", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- FOTO DE PERFIL ---
         Box(contentAlignment = Alignment.BottomEnd) {
             Surface(
                 modifier = Modifier
@@ -162,7 +184,6 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // --- TARJETA DE INFORMACIÓN ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -174,15 +195,11 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.5f))
 
                 ProfileInfoRow(icon = Icons.Filled.Phone, label = "Teléfono", value = usuario.telefono.ifBlank { "No especificado" })
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.5f))
-
-                ProfileInfoRow(icon = Icons.Filled.Cake, label = "Fecha de Nacimiento", value = usuario.fechaNacimiento.ifBlank { "No especificada" })
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // --- BOTONES DE ACCIÓN ---
         OutlinedButton(
             onClick = { showEditDialog = true },
             modifier = Modifier.fillMaxWidth(),
@@ -197,7 +214,6 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
 
         Button(
             onClick = {
-                // 🧹 LIMPIEZA TOTAL: Borramos la memoria al cerrar sesión
                 sharedPreferences.edit().clear().apply()
                 onLogout()
             },
@@ -217,14 +233,28 @@ fun ProfileScreen(onLogout: () -> Unit, petViewModel: PetViewModel) {
             onSave = { usuarioEditado ->
                 usuario = usuarioEditado
 
-                // Guardamos los datos nuevos
+                // 1. Guardamos en local al instante
                 sharedPreferences.edit()
                     .putString("nombre", usuarioEditado.nombre)
                     .putString("apellidos", usuarioEditado.apellidos)
                     .putString("correo", usuarioEditado.correo)
                     .putString("telefono", usuarioEditado.telefono)
-                    .putString("fecha_nacimiento", usuarioEditado.fechaNacimiento)
                     .apply()
+
+                // 2. Enviamos los datos reales al servidor MySQL
+                val idUsuarioLogueado = sharedPreferences.getInt("idUsuario", 0)
+
+                val usuarioParaBackend = Usuario(
+                    idUsuario = idUsuarioLogueado,
+                    nombre = usuarioEditado.nombre,
+                    apellidos = usuarioEditado.apellidos,
+                    email = usuarioEditado.correo,
+                    telefono = usuarioEditado.telefono,
+                    password = profileViewModel.usuarioData?.password ?: "",
+                    rol = profileViewModel.usuarioData?.rol ?: "Cliente"
+                )
+
+                profileViewModel.actualizarPerfil(context, usuarioParaBackend)
 
                 showEditDialog = false
             }
@@ -253,27 +283,8 @@ fun UsuarioEditDialogPremium(usuarioActual: UsuarioPerfil, onDismiss: () -> Unit
     var apellidos by remember { mutableStateOf(usuarioActual.apellidos) }
     var correo by remember { mutableStateOf(usuarioActual.correo) }
     var telefono by remember { mutableStateOf(usuarioActual.telefono) }
-    var fechaNacimiento by remember { mutableStateOf(usuarioActual.fechaNacimiento) }
 
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
     val fieldBackgroundColor = Color(0xFFF8F9FA)
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDatePicker = false
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                        fechaNacimiento = sdf.format(Date(millis))
-                    }
-                }) { Text("Aceptar") }
-            },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
-        ) { DatePicker(state = datePickerState) }
-    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -319,14 +330,6 @@ fun UsuarioEditDialogPremium(usuarioActual: UsuarioPerfil, onDismiss: () -> Unit
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = fechaNacimiento, onValueChange = {}, readOnly = true, label = { Text("Fecha de Nacimiento") },
-                    modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }, enabled = false,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = fieldBackgroundColor, disabledBorderColor = Color.Transparent, disabledLabelColor = TextColorGray)
-                )
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -334,7 +337,7 @@ fun UsuarioEditDialogPremium(usuarioActual: UsuarioPerfil, onDismiss: () -> Unit
                     TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
-                        onClick = { onSave(UsuarioPerfil(nombre, apellidos, correo, telefono, fechaNacimiento, usuarioActual.fotoUri)) },
+                        onClick = { onSave(UsuarioPerfil(nombre, apellidos, correo, telefono, usuarioActual.fotoUri)) },
                         colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary),
                         shape = RoundedCornerShape(16.dp)
                     ) { Text("Guardar", color = TextColorDark, fontWeight = FontWeight.Bold) }

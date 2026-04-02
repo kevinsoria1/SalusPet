@@ -12,6 +12,6 @@ data class Usuario(
     val telefono: String? = null,
     val password: String,
     val rol: String,
-    val fechaRegistro: Date? = null,
+    val fechaRegistro: String? = null,
     val mascota: List<Mascota> = emptyList()
 )

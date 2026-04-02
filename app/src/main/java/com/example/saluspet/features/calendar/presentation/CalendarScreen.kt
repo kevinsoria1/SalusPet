@@ -12,13 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PendingActions
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,54 +24,66 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.saluspet.features.calendar.data.Cita
+import com.example.saluspet.features.pets.presentation.Pet
+import com.example.saluspet.features.pets.presentation.PetViewModel
 import com.example.saluspet.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- MODELOS DE DATOS ---
-data class Cita(
-    val id: Long = System.currentTimeMillis(),
-    val titulo: String,
-    val fecha: String,
-    val hora: String,
-    val descripcion: String
-)
-
+// --- MODELOS LOCALES PARA LAS PETICIONES ---
 enum class EstadoPeticion { SOLICITADA, RESPUESTA_VET }
 
 data class PeticionVet(
     val id: Long = System.currentTimeMillis(),
     val motivo: String,
     val fechaSolicitada: String,
-    val horaSolicitada: String, // ¡NUEVO CAMPO HORA!
+    val horaSolicitada: String,
+    var idMascota: Int,
+    var nombreMascota: String,
     var fechaPropuestaVet: String? = null,
-    var horaPropuestaVet: String? = null, // ¡NUEVO CAMPO HORA RESPUESTA!
+    var horaPropuestaVet: String? = null,
     var estado: EstadoPeticion = EstadoPeticion.SOLICITADA
 )
 
+fun convertirFechaBackend(fecha: String): String {
+    return try {
+        val inFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val outFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        outFormat.format(inFormat.parse(fecha)!!)
+    } catch (e: Exception) {
+        fecha
+    }
+}
+
 // --- PANTALLA PRINCIPAL ---
 @Composable
-fun CalendarScreen(calendarViewModel: CalendarViewModel) {
+fun CalendarScreen(
+    calendarViewModel: CalendarViewModel,
+    petViewModel: PetViewModel
+) {
+    val context = LocalContext.current
     val listaCitas = calendarViewModel.listaCitas
     val listaPeticiones = remember { mutableStateListOf<PeticionVet>() }
+    val misMascotas = petViewModel.listaMascotas
 
     var showDialogInterna by remember { mutableStateOf(false) }
     var citaAEditar by remember { mutableStateOf<Cita?>(null) }
     var showDialogSolicitud by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        calendarViewModel.cargarAgendaGlobal(context)
+    }
+
     Scaffold(
         bottomBar = {
-            // BOTONES ESTILO "FAB" (Idénticos al Home)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .padding(bottom = 8.dp), // Un poco de aire por abajo
+                modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Button(
                     onClick = { citaAEditar = null; showDialogInterna = true },
-                    modifier = Modifier.weight(1f).height(56.dp), // Altura estándar de FAB
+                    modifier = Modifier.weight(1f).height(56.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary),
                     shape = RoundedCornerShape(16.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
@@ -106,8 +112,6 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
             Spacer(modifier = Modifier.height(24.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-                // 1. SECCIÓN DE PETICIONES AL VETERINARIO
                 if (listaPeticiones.isNotEmpty()) {
                     item {
                         Text("Trámites con la Clínica", fontWeight = FontWeight.Bold, color = PastelGreenPrimary, fontSize = 18.sp)
@@ -117,15 +121,19 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
                         PeticionCard(
                             peticion = peticion,
                             onAccept = {
-                                calendarViewModel.agregarCita(
-                                    Cita(
-                                        titulo = peticion.motivo,
-                                        fecha = peticion.fechaPropuestaVet ?: peticion.fechaSolicitada,
-                                        hora = peticion.horaPropuestaVet ?: peticion.horaSolicitada,
-                                        descripcion = "Cita confirmada por el veterinario"
-                                    )
+                                val nuevaCitaVet = Cita(
+                                    idCita = 0,
+                                    idMascota = peticion.idMascota,
+                                    nombreMascota = peticion.nombreMascota, // ⬅️ Enviamos el nombre
+                                    tipo = "Veterinaria",
+                                    titulo = peticion.motivo,
+                                    fecha = convertirFechaBackend(peticion.fechaPropuestaVet ?: peticion.fechaSolicitada),
+                                    hora = peticion.horaPropuestaVet ?: peticion.horaSolicitada,
+                                    descripcion = "Cita veterinaria confirmada"
                                 )
+                                calendarViewModel.crearCitaEnServidor(nuevaCitaVet)
                                 listaPeticiones.remove(peticion)
+                                calendarViewModel.cargarAgendaGlobal(context)
                             },
                             onDeny = { listaPeticiones.remove(peticion) },
                             onSimularRespuestaVet = {
@@ -134,7 +142,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
                                     listaPeticiones[index] = peticion.copy(
                                         estado = EstadoPeticion.RESPUESTA_VET,
                                         fechaPropuestaVet = "25/12/2026",
-                                        horaPropuestaVet = "11:30" // El vet propone también la hora
+                                        horaPropuestaVet = "11:30"
                                     )
                                 }
                             }
@@ -142,7 +150,6 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
                     }
                 }
 
-                // 2. SECCIÓN DE AGENDA INTERNA
                 item {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Mi Agenda Confirmada", fontWeight = FontWeight.Bold, color = TextColorDark, fontSize = 18.sp)
@@ -151,9 +158,11 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
                         Text("No hay citas programadas", color = TextColorGray)
                     }
                 }
+
                 items(listaCitas) { cita ->
-                    CitaCardExpandible(
+                    CitaCard(
                         cita = cita,
+                        listaMascotas = misMascotas, // ⬅️ Le pasamos las mascotas para que busque el nombre
                         onDelete = { calendarViewModel.eliminarCita(cita) },
                         onEdit = { citaAEditar = cita; showDialogInterna = true }
                     )
@@ -161,14 +170,17 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
             }
         }
 
-        // DIÁLOGOS
         if (showDialogInterna) {
             CitaDialogPremium(
                 citaExistente = citaAEditar,
+                listaMascotas = misMascotas,
                 onDismiss = { showDialogInterna = false },
                 onSave = { nuevaCita ->
-                    if (citaAEditar == null) calendarViewModel.agregarCita(nuevaCita)
-                    else calendarViewModel.editarCita(citaAEditar!!, nuevaCita)
+                    if (citaAEditar == null) {
+                        calendarViewModel.crearCitaEnServidor(nuevaCita)
+                    } else {
+                        calendarViewModel.editarCita(citaAEditar!!, nuevaCita)
+                    }
                     showDialogInterna = false
                 }
             )
@@ -176,6 +188,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
 
         if (showDialogSolicitud) {
             SolicitarVetDialog(
+                listaMascotas = misMascotas,
                 onDismiss = { showDialogSolicitud = false },
                 onSend = { nuevaPeticion ->
                     listaPeticiones.add(nuevaPeticion)
@@ -186,7 +199,56 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel) {
     }
 }
 
-// --- TARJETA DE PETICIONES AL VETERINARIO ---
+@Composable
+fun CitaCard(cita: Cita, listaMascotas: List<Pet>, onDelete: () -> Unit, onEdit: () -> Unit) {
+    val isVeterinaria = cita.tipo == "Veterinaria"
+
+    // 🔍 BUSCADOR INTELIGENTE: Si el backend no devuelve el nombre, lo buscamos en tu lista local por ID
+    val mascotaEncontrada = listaMascotas.find { it.id.toInt() == cita.idMascota }
+    val nombreReal = cita.nombreMascota ?: mascotaEncontrada?.nombre ?: "Mascota"
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isVeterinaria) Color(0xFFE3F2FD) else Color(0xFFF1F8E9)),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    // 🔥 Aquí pegamos el nombre real de forma automática
+                    Text(text = "$nombreReal - ${cita.titulo}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.DarkGray)
+
+                    if (isVeterinaria) {
+                        Text(text = cita.estado ?: "Pendiente", fontWeight = FontWeight.Bold, color = if (cita.estado == "Pendiente") Color(0xFFFFA000) else Color(0xFF388E3C))
+                    } else {
+                        Text(text = "Recordatorio Personal", fontWeight = FontWeight.Medium, color = PastelGreenPrimary, fontSize = 14.sp)
+                    }
+                }
+                Row {
+                    IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, null, tint = TextColorGray) }
+                    IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, null, tint = Color.Red) }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row {
+                Icon(Icons.Filled.CalendarToday, null, modifier = Modifier.size(16.dp), tint = Color.Gray)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = cita.fecha, color = Color.Gray, fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(16.dp))
+                Icon(Icons.Filled.AccessTime, null, modifier = Modifier.size(16.dp), tint = Color.Gray)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = cita.hora, color = Color.Gray, fontSize = 14.sp)
+            }
+            if (!cita.descripcion.isNullOrBlank() && cita.descripcion != "Sin notas") {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color.LightGray.copy(alpha = 0.5f))
+                Text(text = cita.descripcion, fontSize = 14.sp, color = Color.DarkGray, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
 @Composable
 fun PeticionCard(peticion: PeticionVet, onAccept: () -> Unit, onDeny: () -> Unit, onSimularRespuestaVet: () -> Unit) {
     Card(
@@ -204,7 +266,7 @@ fun PeticionCard(peticion: PeticionVet, onAccept: () -> Unit, onDeny: () -> Unit
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text(peticion.motivo, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextColorDark)
+                    Text("${peticion.nombreMascota}: ${peticion.motivo}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextColorDark)
                     if (peticion.estado == EstadoPeticion.SOLICITADA) {
                         Text("Solicitada: ${peticion.fechaSolicitada} a las ${peticion.horaSolicitada}", color = TextColorGray, fontSize = 14.sp)
                         Text("Esperando confirmación...", color = Color(0xFFFBC02D), fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -213,10 +275,9 @@ fun PeticionCard(peticion: PeticionVet, onAccept: () -> Unit, onDeny: () -> Unit
                     }
                 }
             }
-
             if (peticion.estado == EstadoPeticion.RESPUESTA_VET) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDeny) { Text("Rechazar", color = Color.Red) }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(onClick = onAccept, colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary)) {
@@ -228,17 +289,18 @@ fun PeticionCard(peticion: PeticionVet, onAccept: () -> Unit, onDeny: () -> Unit
     }
 }
 
-// --- FORMULARIO DE SOLICITUD AL VET (CON HORA Y FECHA) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SolicitarVetDialog(onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
+fun SolicitarVetDialog(listaMascotas: List<Pet>, onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
     var motivo by remember { mutableStateOf("") }
     var fecha by remember { mutableStateOf("") }
     var hora by remember { mutableStateOf("") }
 
+    var mascotaSeleccionada by remember { mutableStateOf(listaMascotas.firstOrNull()) }
+    var expandedPets by remember { mutableStateOf(false) }
+
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-
     val datePickerState = rememberDatePickerState()
     val timePickerState = rememberTimePickerState()
 
@@ -264,7 +326,7 @@ fun SolicitarVetDialog(onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     showTimePicker = false
-                    hora = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    hora = String.format("%02d:%02d:00", timePickerState.hour, timePickerState.minute)
                 }) { Text("Aceptar") }
             },
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Cancelar") } },
@@ -273,40 +335,36 @@ fun SolicitarVetDialog(onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter),
-            modifier = Modifier.fillMaxWidth().padding(16.dp)
-        ) {
+        Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.size(64.dp)) {
-                    Icon(Icons.Filled.Send, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
+                    Icon(Icons.Filled.Send, null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Solicitar Cita al Veterinario", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
                 Spacer(modifier = Modifier.height(24.dp))
 
-                OutlinedTextField(
-                    value = motivo, onValueChange = { motivo = it }, label = { Text("Motivo de la cita") },
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0xFFF8F9FA), unfocusedContainerColor = Color(0xFFF8F9FA), focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
-                )
+                ExposedDropdownMenuBox(expanded = expandedPets, onExpandedChange = { expandedPets = !expandedPets }) {
+                    OutlinedTextField(
+                        value = mascotaSeleccionada?.nombre ?: "Selecciona mascota", onValueChange = {}, readOnly = true, label = { Text("Mascota") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPets) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
+                    )
+                    ExposedDropdownMenu(expanded = expandedPets, onDismissRequest = { expandedPets = false }, containerColor = Color.White) {
+                        listaMascotas.forEach { pet ->
+                            DropdownMenuItem(text = { Text(pet.nombre) }, onClick = { mascotaSeleccionada = pet; expandedPets = false })
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Selector de Fecha y Hora
+                OutlinedTextField(value = motivo, onValueChange = { motivo = it }, label = { Text("Motivo de la cita") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = fecha, onValueChange = {}, readOnly = true, label = { Text("Fecha") },
-                        modifier = Modifier.weight(1f).clickable { showDatePicker = true }, enabled = false,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledBorderColor = Color.Transparent, disabledContainerColor = Color(0xFFF8F9FA), disabledLabelColor = TextColorGray)
-                    )
-                    OutlinedTextField(
-                        value = hora, onValueChange = {}, readOnly = true, label = { Text("Hora") },
-                        modifier = Modifier.weight(1f).clickable { showTimePicker = true }, enabled = false,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledBorderColor = Color.Transparent, disabledContainerColor = Color(0xFFF8F9FA), disabledLabelColor = TextColorGray)
-                    )
+                    OutlinedTextField(value = fecha, onValueChange = {}, readOnly = true, label = { Text("Fecha") }, modifier = Modifier.weight(1f).clickable { showDatePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = Color.White, disabledBorderColor = Color.Transparent))
+                    OutlinedTextField(value = hora, onValueChange = {}, readOnly = true, label = { Text("Hora") }, modifier = Modifier.weight(1f).clickable { showTimePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = Color.White, disabledBorderColor = Color.Transparent))
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -314,10 +372,13 @@ fun SolicitarVetDialog(onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
                     TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
-                        onClick = { onSend(PeticionVet(motivo = motivo, fechaSolicitada = fecha, horaSolicitada = hora)) },
-                        enabled = motivo.isNotBlank() && fecha.isNotBlank() && hora.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary),
-                        shape = RoundedCornerShape(16.dp)
+                        onClick = {
+                            mascotaSeleccionada?.let { pet ->
+                                onSend(PeticionVet(motivo = motivo, fechaSolicitada = fecha, horaSolicitada = hora, idMascota = pet.id.toInt(), nombreMascota = pet.nombre))
+                            }
+                        },
+                        enabled = motivo.isNotBlank() && fecha.isNotBlank() && hora.isNotBlank() && mascotaSeleccionada != null,
+                        colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary), shape = RoundedCornerShape(16.dp)
                     ) { Text("Enviar Solicitud", color = TextColorDark, fontWeight = FontWeight.Bold) }
                 }
             }
@@ -325,57 +386,22 @@ fun SolicitarVetDialog(onDismiss: () -> Unit, onSend: (PeticionVet) -> Unit) {
     }
 }
 
-// --- AGENDA INTERNA: CITA CARD EXPANDIBLE Y DIÁLOGO ---
-@Composable
-fun CitaCardExpandible(cita: Cita, onDelete: () -> Unit, onEdit: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Surface(shape = RoundedCornerShape(8.dp), color = PastelBlueBackgroundLighter, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(12.dp))
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(cita.titulo, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextColorDark)
-                        Text("${cita.fecha} a las ${cita.hora}", color = PastelGreenPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-                Row {
-                    IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, null, tint = TextColorGray) }
-                    IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, null, tint = Color.Red) }
-                }
-            }
-            if (expanded && cita.descripcion.isNotBlank()) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.5f))
-                Text("Detalles / Notas:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = TextColorGray)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(cita.descripcion, fontSize = 14.sp, color = TextColorDark)
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CitaDialogPremium(citaExistente: Cita?, onDismiss: () -> Unit, onSave: (Cita) -> Unit) {
+fun CitaDialogPremium(citaExistente: Cita?, listaMascotas: List<Pet>, onDismiss: () -> Unit, onSave: (Cita) -> Unit) {
     val context = LocalContext.current
     var titulo by remember { mutableStateOf(citaExistente?.titulo ?: "") }
     var fecha by remember { mutableStateOf(citaExistente?.fecha ?: "") }
     var hora by remember { mutableStateOf(citaExistente?.hora ?: "") }
     var desc by remember { mutableStateOf(citaExistente?.descripcion ?: "") }
 
+    var mascotaSeleccionada by remember { mutableStateOf(listaMascotas.find { it.id.toInt() == citaExistente?.idMascota } ?: listaMascotas.firstOrNull()) }
+    var expandedPets by remember { mutableStateOf(false) }
+
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
     val timePickerState = rememberTimePickerState()
-    val fieldBackgroundColor = Color(0xFFF8F9FA)
 
     if (showDatePicker) {
         DatePickerDialog(
@@ -399,7 +425,7 @@ fun CitaDialogPremium(citaExistente: Cita?, onDismiss: () -> Unit, onSave: (Cita
             confirmButton = {
                 TextButton(onClick = {
                     showTimePicker = false
-                    hora = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    hora = String.format("%02d:%02d:00", timePickerState.hour, timePickerState.minute)
                 }) { Text("Aceptar") }
             },
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Cancelar") } },
@@ -408,66 +434,71 @@ fun CitaDialogPremium(citaExistente: Cita?, onDismiss: () -> Unit, onSave: (Cita
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter),
-            elevation = CardDefaults.cardElevation(8.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(24.dp).verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+        Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter), elevation = CardDefaults.cardElevation(8.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.size(64.dp)) {
-                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
+                    Icon(Icons.Filled.CalendarMonth, null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(if (citaExistente == null) "Nueva Cita Interna" else "Editar Cita", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
                 Spacer(modifier = Modifier.height(24.dp))
 
-                OutlinedTextField(
-                    value = titulo, onValueChange = { titulo = it }, label = { Text("Motivo") }, modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ExposedDropdownMenuBox(expanded = expandedPets, onExpandedChange = { expandedPets = !expandedPets }) {
                     OutlinedTextField(
-                        value = fecha, onValueChange = {}, readOnly = true, label = { Text("Fecha") },
-                        modifier = Modifier.weight(1f).clickable { showDatePicker = true }, enabled = false,
-                        colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = fieldBackgroundColor, disabledBorderColor = Color.Transparent, disabledLabelColor = TextColorGray)
+                        value = mascotaSeleccionada?.nombre ?: "Selecciona mascota", onValueChange = {}, readOnly = true, label = { Text("Asignar a Mascota") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPets) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
                     )
-                    OutlinedTextField(
-                        value = hora, onValueChange = {}, readOnly = true, label = { Text("Hora") },
-                        modifier = Modifier.weight(1f).clickable { showTimePicker = true }, enabled = false,
-                        colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = fieldBackgroundColor, disabledBorderColor = Color.Transparent, disabledLabelColor = TextColorGray)
-                    )
+                    ExposedDropdownMenu(expanded = expandedPets, onDismissRequest = { expandedPets = false }, containerColor = Color.White) {
+                        listaMascotas.forEach { pet ->
+                            DropdownMenuItem(text = { Text(pet.nombre) }, onClick = { mascotaSeleccionada = pet; expandedPets = false })
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = desc, onValueChange = { if (it.length <= 500) desc = it }, label = { Text("Notas o Descripción") }, modifier = Modifier.fillMaxWidth().height(100.dp),
-                    shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent)
-                )
+                OutlinedTextField(value = titulo, onValueChange = { titulo = it }, label = { Text("Motivo / Título") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = fecha, onValueChange = {}, readOnly = true, label = { Text("Fecha") }, modifier = Modifier.weight(1f).clickable { showDatePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = Color.White, disabledBorderColor = Color.Transparent))
+                    OutlinedTextField(value = hora, onValueChange = {}, readOnly = true, label = { Text("Hora") }, modifier = Modifier.weight(1f).clickable { showTimePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextColorDark, disabledContainerColor = Color.White, disabledBorderColor = Color.Transparent))
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(value = desc, onValueChange = { if (it.length <= 500) desc = it }, label = { Text("Notas o Descripción") }, modifier = Modifier.fillMaxWidth().height(100.dp), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
 
                 Spacer(modifier = Modifier.height(32.dp))
-
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val citaGuardar = Cita(id = citaExistente?.id ?: System.currentTimeMillis(), titulo = titulo, fecha = fecha, hora = hora, descripcion = desc)
-                            onSave(citaGuardar)
+                            mascotaSeleccionada?.let { pet ->
+                                val citaGuardar = Cita(
+                                    idCita = citaExistente?.idCita ?: 0,
+                                    idMascota = pet.id.toInt(),
+                                    nombreMascota = pet.nombre, // ⬅️ IMPORTANTE: Añadimos el nombre aquí para que se vea rápido
+                                    tipo = citaExistente?.tipo ?: "Personal",
+                                    titulo = titulo,
+                                    fecha = convertirFechaBackend(fecha),
+                                    hora = hora,
+                                    descripcion = desc.ifBlank { "Sin notas" }
+                                )
+                                onSave(citaGuardar)
 
-                            if (citaExistente == null) {
-                                val intent = Intent(Intent.ACTION_INSERT).apply {
-                                    data = CalendarContract.Events.CONTENT_URI
-                                    putExtra(CalendarContract.Events.TITLE, "SalusPet: $titulo")
-                                    putExtra(CalendarContract.Events.DESCRIPTION, desc)
+                                if (citaExistente == null) {
+                                    val intent = Intent(Intent.ACTION_INSERT).apply {
+                                        data = CalendarContract.Events.CONTENT_URI
+                                        putExtra(CalendarContract.Events.TITLE, "SalusPet ($pet.nombre): $titulo")
+                                        putExtra(CalendarContract.Events.DESCRIPTION, desc)
+                                    }
+                                    context.startActivity(intent)
                                 }
-                                context.startActivity(intent)
                             }
                         },
-                        enabled = titulo.isNotBlank() && fecha.isNotBlank() && hora.isNotBlank(),
+                        enabled = titulo.isNotBlank() && fecha.isNotBlank() && hora.isNotBlank() && mascotaSeleccionada != null,
                         colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary), shape = RoundedCornerShape(16.dp)
                     ) { Text(if (citaExistente == null) "Guardar" else "Actualizar", color = TextColorDark, fontWeight = FontWeight.Bold) }
                 }

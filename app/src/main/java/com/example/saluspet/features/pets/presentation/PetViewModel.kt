@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+// Modelo visual para la interfaz
 data class Pet(
     val id: Long,
     val nombre: String,
@@ -18,32 +19,31 @@ data class Pet(
     val sexo: String,
     val edad: String,
     val peso: String,
-    val fotoBase64: String? = null // 猬咃笍 Ya lo ten铆as perfecto
+    val fotoBase64: String? = null
 )
 
 class PetViewModel : ViewModel() {
 
-    // Instanciamos el repositorio directamente
     private val repository = PetRepository()
-
-    // La lista que lee tu PetHomeScreen
     val listaMascotas = mutableStateListOf<Pet>()
 
-    init {
-        // Nada m谩s cargar la app, pedimos las mascotas a la base de datos de Aar贸n
-        cargarMascotas()
-    }
-
-    fun cargarMascotas() {
+    // 🌟 MODIFICADO: Ahora cargarMascotas necesita el Context para saber QUIÉN es el usuario
+    fun cargarMascotas(context: Context) {
         viewModelScope.launch {
             try {
-                // 1. Descargamos de la API (nos devuelve una lista de Mascota)
-                val mascotasApi = repository.obtenerMascotasDesdeServidor()
+                // 1. Sacamos el ID del usuario logueado
+                val sharedPref = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
+                val idUsuario = sharedPref.getInt("idUsuario", 0)
 
-                // Formateador para pasar de Date a String legible (ej: 12/05/2024)
-                val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                if (idUsuario == 0) {
+                    println("Error: No hay usuario logueado")
+                    return@launch
+                }
 
-                // 2. Convertimos el formato del servidor (Mascota) al de tu interfaz (Pet)
+                // 2. 🌟 LLAMADA CORREGIDA: Ahora le pasamos el idUsuario al Repository
+                val mascotasApi = repository.obtenerMascotasDesdeServidor(idUsuario)
+
+                // 3. Convertimos el formato del servidor (Mascota) al de la interfaz (Pet)
                 val mascotasConvertidas = mascotasApi.map { apiMascota ->
                     Pet(
                         id = apiMascota.idMascota.toLong(),
@@ -52,12 +52,10 @@ class PetViewModel : ViewModel() {
                         sexo = apiMascota.genero ?: "No especificado",
                         edad = apiMascota.fechaNacimiento ?: "-",
                         peso = apiMascota.peso.toString(),
-                        // 馃敟 MODIFICADO: Ahora lee "urlFoto" (GET de C#) o "fotoBase64"
                         fotoBase64 = apiMascota.urlFoto ?: apiMascota.fotoBase64
                     )
                 }
 
-                // 3. Actualizamos la pantalla
                 listaMascotas.clear()
                 listaMascotas.addAll(mascotasConvertidas)
 
@@ -67,7 +65,7 @@ class PetViewModel : ViewModel() {
         }
     }
 
-    // --- NUEVA FUNCI脫N PARA ENVIAR AL SERVIDOR ---
+    // --- FUNCIÓN PARA CREAR (CORREGIDA) ---
     fun crearMascotaEnServidor(
         context: Context,
         nombre: String,
@@ -79,16 +77,11 @@ class PetViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                // 1. Recuperamos el ID del usuario
                 val sharedPreferences = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
                 val idPropietario = sharedPreferences.getInt("idUsuario", 0)
 
-                if (idPropietario == 0) {
-                    println("Error: No se encontr贸 el ID del usuario.")
-                    return@launch
-                }
+                if (idPropietario == 0) return@launch
 
-                // 2. Creamos el objeto exacto que pide el Swagger de Aar贸n
                 val nuevaMascotaApi = Mascota(
                     idMascota = 0,
                     idUsuario = idPropietario,
@@ -97,63 +90,89 @@ class PetViewModel : ViewModel() {
                     peso = peso,
                     fechaNacimiento = fechaNac,
                     genero = genero,
-                    fotoBase64 = fotoBase64    // 猬咃笍 CORRECCI脫N: Ahora s铆 enviamos la foto
+                    fotoBase64 = fotoBase64
                 )
 
-                // 3. Lo enviamos por Retrofit
                 val response = RetrofitClient.apiService.registrarMascota(nuevaMascotaApi)
 
                 if (response.isSuccessful) {
-                    println("隆Mascota guardada en la base de datos de Aar贸n!")
-                    // Recargamos la lista para que aparezca en pantalla
-                    cargarMascotas()
-                } else {
-                    println("Error del servidor (${response.code()}): ${response.errorBody()?.string()}")
+                    // 🌟 Recargamos pasando el context
+                    cargarMascotas(context)
                 }
-
             } catch (e: Exception) {
-                println("Fallo de conexi贸n: ${e.message}")
+                println("Fallo de conexión: ${e.message}")
             }
         }
     }
 
-    // --- Mantenemos estas funciones para que la UI no d茅 error de momento ---
-    fun agregarMascota(pet: Pet) {
-        listaMascotas.add(pet)
-    }
-
+    // --- BORRAR MASCOTA (CORREGIDA) ---
     fun eliminarMascota(pet: Pet) {
-        listaMascotas.remove(pet)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.eliminarMascota(pet.id.toInt())
+                if (response.isSuccessful) {
+                    listaMascotas.remove(pet)
+                }
+            } catch (e: Exception) {
+                println("Error de red: ${e.message}")
+            }
+        }
     }
 
-    fun editarMascota(petAntiguo: Pet, petNuevo: Pet) {
+    // ✏️ EDITAR MASCOTA (Actualización Optimista)
+    fun editarMascota(context: android.content.Context, petAntiguo: Pet, petNuevo: Pet) {
+
+        // 🚀 1. ACTUALIZACIÓN AL INSTANTE: Cambiamos la lista local sin esperar a nadie
         val index = listaMascotas.indexOfFirst { it.id == petAntiguo.id }
         if (index != -1) {
             listaMascotas[index] = petNuevo
         }
+
+        // 🌐 2. EN SEGUNDO PLANO: Le avisamos al servidor de Aarón
+        viewModelScope.launch {
+            try {
+                val sharedPreferences = context.getSharedPreferences("perfil_saluspet", android.content.Context.MODE_PRIVATE)
+                val idPropietario = sharedPreferences.getInt("idUsuario", 0)
+
+                val mascotaActualizadaApi = com.example.saluspet.features.pets.data.Mascota(
+                    idMascota = petNuevo.id.toInt(),
+                    idUsuario = idPropietario,
+                    nombre = petNuevo.nombre,
+                    especie = petNuevo.especie,
+                    peso = petNuevo.peso.replace(",", ".").toDoubleOrNull() ?: 1.0,
+                    fechaNacimiento = petNuevo.edad, // Ya viene limpia del HomeScreen
+                    genero = petNuevo.sexo,
+                    fotoBase64 = petNuevo.fotoBase64
+                )
+
+                val response = com.example.saluspet.core.network.RetrofitClient.apiService.actualizarMascota(petNuevo.id.toInt(), mascotaActualizadaApi)
+
+                if (response.isSuccessful) {
+                    println("✅ Mascota actualizada en la base de datos MySQL")
+                } else {
+                    println("❌ Aarón rechazó los datos. Código: ${response.code()}")
+                    // Opcional: Podrías revertir el cambio visual aquí si quisieras (listaMascotas[index] = petAntiguo)
+                }
+            } catch (e: Exception) {
+                println("❌ Fallo de red: ${e.message}")
+            }
+        }
     }
 
-    // Aseg煤rate de pasar el 'Context' como primer par谩metro
+    // --- ACTUALIZAR FOTO ---
     fun actualizarFotoPet(context: Context, pet: Pet, nuevaFotoBase64: String?) {
         viewModelScope.launch {
             try {
-                // 1. Actualizamos la pantalla del móvil rápido
-                val index = listaMascotas.indexOfFirst { it.id == pet.id }
-                if (index != -1) {
-                    listaMascotas[index] = pet.copy(fotoBase64 = nuevaFotoBase64)
-                }
-
-                // 2. Llamamos al NUEVO ENDPOINT súper seguro de Aarón
                 val bodyRequest = mapOf("fotoBase64" to nuevaFotoBase64)
                 val response = RetrofitClient.apiService.actualizarFotoMascota(pet.id.toInt(), bodyRequest)
-
                 if (response.isSuccessful) {
-                    println("¡Bingo! Foto subida directamente a la base de datos de Aarón")
-                } else {
-                    println("Error en la subida (${response.code()}): ${response.errorBody()?.string()}")
+                    val index = listaMascotas.indexOfFirst { it.id == pet.id }
+                    if (index != -1) {
+                        listaMascotas[index] = pet.copy(fotoBase64 = nuevaFotoBase64)
+                    }
                 }
             } catch (e: Exception) {
-                println("Fallo de conexión crítico: ${e.message}")
+                println("Fallo de conexión: ${e.message}")
             }
         }
     }

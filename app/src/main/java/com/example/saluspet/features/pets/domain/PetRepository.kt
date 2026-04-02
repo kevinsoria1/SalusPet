@@ -6,12 +6,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class PetRepository {
-    suspend fun obtenerMascotasDesdeServidor(): List<Mascota> {
+    // 🌟 AHORA RECIBIMOS EL ID DEL USUARIO COMO PARÁMETRO
+    suspend fun obtenerMascotasDesdeServidor(idUsuario: Int): List<Mascota> {
         // Ejecutamos la llamada en un hilo secundario para no congelar la pantalla
         return withContext(Dispatchers.IO) {
             try {
-                // Llamamos al endpoint de Aarón
-                val response = RetrofitClient.apiService.getMascotas()
+                // 🌟 LE PASAMOS EL ID AL ENDPOINT DE AARÓN (Aquí es donde se arregla el error)
+                val response = RetrofitClient.apiService.getMascotas(idUsuario)
 
                 if (response.isSuccessful) {
                     response.body() ?: emptyList()

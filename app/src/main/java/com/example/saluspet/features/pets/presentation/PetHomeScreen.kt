@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
@@ -50,48 +51,33 @@ import java.util.Locale
 fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewModel) {
     val context = LocalContext.current
 
-    val mascotas = petViewModel.listaMascotas
-    val proximasCitas = calendarViewModel.listaCitas
+    LaunchedEffect(Unit) {
+        petViewModel.cargarMascotas(context)
+    }
 
+    val mascotas = petViewModel.listaMascotas
     var showDialog by remember { mutableStateOf(false) }
     var mascotaAEditar by remember { mutableStateOf<Pet?>(null) }
     var petSeleccionado by remember { mutableStateOf<Pet?>(null) }
     var mascotaParaFoto by remember { mutableStateOf<Pet?>(null) }
 
-    // 🔥 MODIFICADO: Añadido el BitmapFactory.compress() para que la foto no sea gigante y rompa el servidor
     fun uriToBase64(context: android.content.Context, uriString: String): String? {
         return try {
             val uri = android.net.Uri.parse(uriString)
             val inputStream = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
+            val bytes = inputStream?.readBytes()
             inputStream?.close()
-
-            if (bitmap != null) {
-                val outputStream = java.io.ByteArrayOutputStream()
-                // Comprime la imagen al 40% de calidad para no saturar la red
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 40, outputStream)
-                val bytes = outputStream.toByteArray()
-                Base64.encodeToString(bytes, Base64.NO_WRAP)
-            } else null
-        } catch (e: Exception) {
-            null
-        }
+            if (bytes != null) Base64.encodeToString(bytes, Base64.NO_WRAP) else null
+        } catch (e: Exception) { null }
     }
 
     val imageCropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
             result.uriContent?.let { uri ->
-                // 1. Convertimos la foto recortada a Base64 INMEDIATAMENTE
                 val fotoBase64 = uriToBase64(context, uri.toString())
-
                 if (fotoBase64 != null) {
                     mascotaParaFoto?.let { pet ->
-                        // 2. Le mandamos al ViewModel el contexto y la foto YA EN BASE64
                         petViewModel.actualizarFotoPet(context, pet, fotoBase64)
-
-                        if (petSeleccionado?.id == pet.id) {
-                            petSeleccionado = petViewModel.listaMascotas.find { it.id == pet.id }
-                        }
                     }
                 }
             }
@@ -105,7 +91,6 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                 uri = null,
                 cropImageOptions = CropImageOptions(
                     imageSourceIncludeGallery = true,
-                    imageSourceIncludeCamera = false,
                     fixAspectRatio = true,
                     aspectRatioX = 1,
                     aspectRatioY = 1
@@ -123,7 +108,10 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                 pet = petActualizado,
                 onBack = { petSeleccionado = null },
                 onEdit = { mascotaAEditar = petActualizado; showDialog = true },
-                onDelete = { petViewModel.eliminarMascota(petActualizado); petSeleccionado = null },
+                onDelete = {
+                    petViewModel.eliminarMascota(petActualizado)
+                    petSeleccionado = null
+                },
                 onUpdatePhoto = { lanzarRecorte(petActualizado) }
             )
         }
@@ -137,20 +125,10 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                 ) { Icon(Icons.Filled.Add, contentDescription = "Añadir Mascota") }
             }
         ) { padding ->
-            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp)) {
-
-                // --- LOGO COMPACTO ---
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 0.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.logo_saluspet1),
-                        contentDescription = "Logo SalusPet",
-                        modifier = Modifier.height(105.dp)
-                    )
+            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Image(painter = painterResource(id = R.drawable.logo_saluspet1), contentDescription = null, modifier = Modifier.height(105.dp))
                 }
-
                 Text("Mis Mascotas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -174,35 +152,21 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
             petExistente = mascotaAEditar,
             onDismiss = { showDialog = false },
             onSave = { nuevaMascota ->
+
+                val pesoLimpio = nuevaMascota.peso.replace(",", ".").toDoubleOrNull() ?: 1.0
+
+                val fechaParaBackend = try {
+                    val inFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                    val outFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    if (nuevaMascota.edad.isNotBlank() && !nuevaMascota.edad.contains("-")) {
+                        outFormat.format(inFormat.parse(nuevaMascota.edad)!!)
+                    } else {
+                        nuevaMascota.edad
+                    }
+                } catch (e: Exception) { "2026-01-01" }
+
                 if (mascotaAEditar == null) {
-                    // --- 1. PROCESAR FECHA ---
-                    val fechaParaBackend = try {
-                        val inFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                        val outFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        if (nuevaMascota.edad.isNotBlank()) {
-                            outFormat.format(inFormat.parse(nuevaMascota.edad)!!)
-                        } else {
-                            "2026-01-01"
-                        }
-                    } catch (e: Exception) {
-                        "2026-01-01"
-                    }
-
-                    // --- 2. PROCESAR PESO ---
-                    val pesoLimpio = nuevaMascota.peso.replace(",", ".").toDoubleOrNull() ?: 1.0
-
-                    // --- 3. PROCESAR FOTO DE FORMA SEGURA ---
-                    val fotoParaEnviar = nuevaMascota.fotoBase64?.let { foto ->
-                        if (foto.startsWith("content://") || foto.startsWith("file://")) {
-                            // Es una URI local que acaba de seleccionar, la convertimos a Base64
-                            uriToBase64(context, foto)
-                        } else {
-                            // Ya es Base64 (vino de la base de datos), la dejamos intacta
-                            foto
-                        }
-                    }
-
-                    // --- 4. ENVIAR A TU API (AARÓN) ---
+                    // CREAR
                     petViewModel.crearMascotaEnServidor(
                         context = context,
                         nombre = nuevaMascota.nombre,
@@ -210,11 +174,20 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                         peso = pesoLimpio,
                         fechaNac = fechaParaBackend,
                         genero = nuevaMascota.sexo,
-                        fotoBase64 = fotoParaEnviar // ⬅️ Ya lo tenías perfecto
+                        fotoBase64 = nuevaMascota.fotoBase64
                     )
                 } else {
-                    // Edición local
-                    petViewModel.editarMascota(mascotaAEditar!!, nuevaMascota)
+                    // EDITAR
+                    val mascotaActualizadaYFormateada = nuevaMascota.copy(
+                        edad = fechaParaBackend,
+                        peso = pesoLimpio.toString()
+                    )
+                    petViewModel.editarMascota(context, mascotaAEditar!!, mascotaActualizadaYFormateada)
+
+                    // 🚀 TRUCO CLAVE: Forzamos que la ficha detallada reciba los nuevos datos al instante
+                    if (petSeleccionado?.id == mascotaAEditar!!.id) {
+                        petSeleccionado = mascotaActualizadaYFormateada
+                    }
                 }
                 showDialog = false
             }
@@ -222,7 +195,6 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
     }
 }
 
-// 📸 NUEVO COMPONENTE: Decodifica el Base64 y lo pinta sin dar errores
 @Composable
 fun ImagenDecodificada(fotoString: String?, modifier: Modifier = Modifier, fallbackSize: Int = 64) {
     if (fotoString.isNullOrBlank()) {
@@ -232,13 +204,11 @@ fun ImagenDecodificada(fotoString: String?, modifier: Modifier = Modifier, fallb
         return
     }
 
-    // Si es una ruta normal (URI, http, etc), usamos AsyncImage
     if (fotoString.startsWith("content://") || fotoString.startsWith("http")) {
         AsyncImage(model = fotoString, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
         return
     }
 
-    // Si es Base64 puro, lo transformamos en un Bitmap para Jetpack Compose
     val bitmap = remember(fotoString) {
         try {
             val cleanBase64 = if (fotoString.contains(",")) fotoString.split(",")[1] else fotoString
@@ -266,10 +236,7 @@ fun MascotaCardGrande(pet: Pet, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-
-            // 🔥 REEMPLAZO MAGICO AQUI 🔥
             ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize())
-
             Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)), startY = 200f)))
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
                 Text(pet.nombre, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Color.White)
@@ -288,10 +255,7 @@ fun MascotaCardGrande(pet: Pet, onClick: () -> Unit) {
 fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onUpdatePhoto: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-
-            // 🔥 REEMPLAZO MAGICO AQUI TAMBIÉN 🔥
             ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize(), fallbackSize = 100)
-
             IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
                 Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
             }
@@ -358,6 +322,16 @@ fun MascotaDialogPremium(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet
     val datePickerState = rememberDatePickerState()
 
     val fieldBackgroundColor = Color(0xFFF8F9FA)
+
+    LaunchedEffect(petExistente) {
+        if (petExistente != null && petExistente.edad.contains("-")) {
+            try {
+                val dbFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val visualFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                edad = visualFormat.format(dbFormat.parse(petExistente.edad)!!)
+            } catch (e: Exception) { /* Ignorar si falla */ }
+        }
+    }
 
     if (showDatePicker) {
         DatePickerDialog(
