@@ -3,6 +3,7 @@ package com.example.saluspet.features.pets.presentation
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,11 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.outlined.* // ⬅️ IMPRESCINDIBLE PARA LOS NUEVOS DISEÑOS
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -184,7 +184,6 @@ fun PetHomeScreen(calendarViewModel: CalendarViewModel, petViewModel: PetViewMod
                     )
                     petViewModel.editarMascota(context, mascotaAEditar!!, mascotaActualizadaYFormateada)
 
-                    // 🚀 TRUCO CLAVE: Forzamos que la ficha detallada reciba los nuevos datos al instante
                     if (petSeleccionado?.id == mascotaAEditar!!.id) {
                         petSeleccionado = mascotaActualizadaYFormateada
                     }
@@ -252,57 +251,180 @@ fun MascotaCardGrande(pet: Pet, onClick: () -> Unit) {
 }
 
 @Composable
-fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onUpdatePhoto: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-            ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize(), fallbackSize = 100)
-            IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
-            }
-        }
-        Column(modifier = Modifier.padding(24.dp)) {
-            Text(pet.nombre, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                DetalleItem("Especie", pet.especie)
-                DetalleItem("Sexo", pet.sexo)
-                DetalleItem("F. Nacim.", pet.edad)
-                DetalleItem("Peso", "${pet.peso} kg")
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = onUpdatePhoto, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary)) {
-                Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Cambiar Foto de Perfil", color = TextColorDark)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.Edit, contentDescription = null, tint = TextColorDark)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Editar Información", color = TextColorDark)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = onDelete, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCCCC))) {
-                Icon(Icons.Filled.Delete, contentDescription = null, tint = Color.Red)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Eliminar Mascota", color = Color.Red, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
 fun InfoChip(text: String) {
     Surface(color = Color.White.copy(alpha = 0.25f), shape = RoundedCornerShape(8.dp)) {
         Text(text = text, color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontWeight = FontWeight.Medium)
     }
 }
 
+// 🚀 AQUI EMPIEZA LA NUEVA VISTA DE DETALLE REESTRUCTURADA
 @Composable
-fun DetalleItem(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 12.sp, color = TextColorGray)
-        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onUpdatePhoto: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+
+        // 1. Cabecera con Foto y Botón Atrás
+        Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+            ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize(), fallbackSize = 100)
+            IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+            }
+        }
+
+        Column(modifier = Modifier.padding(24.dp)) {
+            // 2. Título (Nombre)
+            Text(pet.nombre, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 3. Tarjeta de Información Cuadriculada (NUEVA)
+            TarjetaInformacionMascota(pet = pet)
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // 4. Botones Compactos Inline (NUEVOS)
+            BotonesAccionMascota(
+                onCambiarFoto = onUpdatePhoto,
+                onEditar = onEdit,
+                onEliminar = onDelete
+            )
+        }
+    }
+}
+
+// 🧩 NUEVO COMPONENTE: TARJETA DE INFORMACIÓN LIMPIA
+// 🧩 NUEVO COMPONENTE: TARJETA DE INFORMACIÓN PERFECTAMENTE SIMÉTRICA
+@Composable
+fun TarjetaInformacionMascota(pet: Pet) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "Información de la Mascota",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = TextColorDark
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Columna Izquierda
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    InfoRowItem(icono = Icons.Outlined.Pets, etiqueta = "Especie", valor = pet.especie)
+                    InfoRowItem(icono = Icons.Outlined.CalendarMonth, etiqueta = "Nacimiento", valor = pet.edad)
+                }
+
+                // Línea divisoria central super fina para dar más elegancia
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(90.dp)
+                        .background(Color.LightGray.copy(alpha = 0.4f))
+                )
+
+                Spacer(modifier = Modifier.width(20.dp))
+
+                // Columna Derecha
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val iconoSexo = if (pet.sexo == "Hembra") Icons.Outlined.Female else Icons.Outlined.Male
+                    InfoRowItem(icono = iconoSexo, etiqueta = "Sexo", valor = pet.sexo)
+                    InfoRowItem(icono = Icons.Outlined.MonitorWeight, etiqueta = "Peso", valor = "${pet.peso} kg")
+                }
+            }
+        }
+    }
+}
+
+// 🧩 NUEVO COMPONENTE: ITEM APILADO PARA EVITAR ASIMETRÍAS
+@Composable
+fun InfoRowItem(icono: ImageVector, etiqueta: String, valor: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(
+            shape = CircleShape,
+            color = PastelBlueBackgroundLighter, // Fondo sutil para el icono
+            modifier = Modifier.size(38.dp)
+        ) {
+            Icon(
+                imageVector = icono,
+                contentDescription = null,
+                tint = PastelGreenPrimary,
+                modifier = Modifier.padding(8.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(text = etiqueta, fontSize = 12.sp, color = TextColorGray)
+            Text(text = valor, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+        }
+    }
+}
+
+// 🧩 NUEVO COMPONENTE: BOTONES COMPACTOS CON FONDO TINTADO
+// 🧩 NUEVO COMPONENTE: BOTONES COMPACTOS CON FONDO TINTADO (EDITAR EN AMARILLO)
+@Composable
+fun BotonesAccionMascota(
+    onCambiarFoto: () -> Unit,
+    onEditar: () -> Unit,
+    onEliminar: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 🟢 Botón Foto (Tinte Verde)
+        OutlinedButton(
+            onClick = onCambiarFoto,
+            modifier = Modifier.weight(1f).height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, PastelGreenPrimary.copy(alpha = 0.5f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = PastelGreenPrimary.copy(alpha = 0.3f),
+                contentColor = PastelGreenPrimary
+            )
+        ) {
+            Icon(Icons.Outlined.CameraAlt, contentDescription = "Cambiar Foto", modifier = Modifier.size(26.dp))
+        }
+
+        // 🟡 Botón Editar (Tinte Amarillo Pastel)
+        val colorEditar = Color(0xFFFBC02D)
+        OutlinedButton(
+            onClick = onEditar,
+            modifier = Modifier.weight(1f).height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, colorEditar.copy(alpha = 0.5f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = colorEditar.copy(alpha = 0.1f), // Fondo amarillento clarito
+                contentColor = colorEditar // Icono amarillo mostaza
+            )
+        ) {
+            Icon(Icons.Outlined.Edit, contentDescription = "Editar", modifier = Modifier.size(26.dp))
+        }
+
+        // 🔴 Botón Eliminar (Tinte Rojo)
+        OutlinedButton(
+            onClick = onEliminar,
+            modifier = Modifier.weight(1f).height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.3f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.Red.copy(alpha = 0.08f),
+                contentColor = Color.Red.copy(alpha = 0.8f)
+            )
+        ) {
+            Icon(Icons.Outlined.Delete, contentDescription = "Eliminar", modifier = Modifier.size(26.dp))
+        }
     }
 }
 

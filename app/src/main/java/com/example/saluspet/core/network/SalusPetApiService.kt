@@ -59,7 +59,6 @@ interface SalusPetApiService {
     @POST("api/Citas")
     suspend fun registrarCita(@Body cita: Cita): Response<Cita>
 
-    // 🆕 NUEVO: Editar una cita existente (cambiar fecha, hora, etc.)
     @PUT("api/Citas/{id}")
     suspend fun actualizarCita(@Path("id") idCita: Int, @Body cita: Cita): Response<Unit>
 

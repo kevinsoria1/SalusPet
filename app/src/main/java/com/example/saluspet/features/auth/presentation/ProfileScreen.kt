@@ -2,6 +2,7 @@ package com.example.saluspet.features.auth.presentation
 
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,11 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.outlined.* // ⬅️ IMPORTANTE PARA LOS NUEVOS ICONOS
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,7 +56,6 @@ fun ProfileScreen(
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
 
-    // 🚀 1. Pedir los datos al servidor nada más abrir la pantalla
     LaunchedEffect(Unit) {
         profileViewModel.cargarPerfil(context)
     }
@@ -73,7 +72,6 @@ fun ProfileScreen(
         )
     }
 
-    // 🌐 2. Cuando el servidor responda, actualizamos la pantalla automáticamente
     LaunchedEffect(profileViewModel.usuarioData) {
         profileViewModel.usuarioData?.let { usuarioBD ->
             usuario = usuario.copy(
@@ -83,7 +81,6 @@ fun ProfileScreen(
                 telefono = usuarioBD.telefono ?: ""
             )
 
-            // Refrescamos las memorias exclusivas del móvil (foto)
             sharedPreferences.edit()
                 .putString("nombre", usuarioBD.nombre)
                 .putString("apellidos", usuarioBD.apellidos)
@@ -200,29 +197,42 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        // 🟡 NUEVO BOTÓN EDITAR (Estilo Tintado Amarillo Pastel)
+        val colorEditar = Color(0xFFFBC02D) // Amarillo mostaza pastel
         OutlinedButton(
             onClick = { showEditDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextColorDark)
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, colorEditar.copy(alpha = 0.5f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = colorEditar.copy(alpha = 0.1f), // Fondo clarito
+                contentColor = colorEditar // Texto e icono
+            )
         ) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
+            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Editar Datos Personales")
+            Text("Editar Datos Personales", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Button(
+        // 🔴 NUEVO BOTÓN CERRAR SESIÓN (Estilo Tintado Rojo)
+        OutlinedButton(
             onClick = {
                 sharedPreferences.edit().clear().apply()
                 onLogout()
             },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCCCC)),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.3f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.Red.copy(alpha = 0.08f), // Fondo rojizo clarito
+                contentColor = Color.Red.copy(alpha = 0.8f) // Texto e icono
+            )
         ) {
-            Icon(Icons.Filled.Logout, contentDescription = null, tint = Color.Red)
+            Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Cerrar Sesión", color = Color.Red, fontWeight = FontWeight.Bold)
+            Text("Cerrar Sesión", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -233,7 +243,6 @@ fun ProfileScreen(
             onSave = { usuarioEditado ->
                 usuario = usuarioEditado
 
-                // 1. Guardamos en local al instante
                 sharedPreferences.edit()
                     .putString("nombre", usuarioEditado.nombre)
                     .putString("apellidos", usuarioEditado.apellidos)
@@ -241,7 +250,6 @@ fun ProfileScreen(
                     .putString("telefono", usuarioEditado.telefono)
                     .apply()
 
-                // 2. Enviamos los datos reales al servidor MySQL
                 val idUsuarioLogueado = sharedPreferences.getInt("idUsuario", 0)
 
                 val usuarioParaBackend = Usuario(
@@ -255,7 +263,6 @@ fun ProfileScreen(
                 )
 
                 profileViewModel.actualizarPerfil(context, usuarioParaBackend)
-
                 showEditDialog = false
             }
         )
