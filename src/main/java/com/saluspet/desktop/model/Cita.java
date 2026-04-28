@@ -51,4 +51,5 @@ public class Cita {
 
     public void setIdVeterinario(Integer idVeterinario) { this.idVeterinario = idVeterinario; }
     public void setEstado(String estado) { this.estado = estado; }
+    public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
 }

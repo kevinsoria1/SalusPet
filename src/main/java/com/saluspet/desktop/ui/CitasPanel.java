@@ -17,12 +17,19 @@ import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import com.itextpdf.text.BaseColor;
+import com.itextpdf.text.Chunk;
 import com.itextpdf.text.Document;
 import com.itextpdf.text.Element;
 import com.itextpdf.text.Font;
 import com.itextpdf.text.FontFactory;
+import com.itextpdf.text.Image;
 import com.itextpdf.text.Paragraph;
+import com.itextpdf.text.Phrase;
+import com.itextpdf.text.pdf.PdfPCell;
+import com.itextpdf.text.pdf.PdfPTable;
 import com.itextpdf.text.pdf.PdfWriter;
+import com.itextpdf.text.pdf.draw.LineSeparator;
 import java.io.File;
 import java.io.FileOutputStream;
 
@@ -348,12 +355,13 @@ public class CitasPanel extends JPanel {
                 return citasService.obtenerCitaPorIdAsync(target.getIdCita());
             }).thenCompose(completa -> {
                 completa.setEstado("Completada");
+                completa.setDescripcion(descripcion);
                 return citasService.actualizarCitaAsync(completa);
             }).thenAccept(citaOk -> {
                 SwingUtilities.invokeLater(() -> {
                     setCursor(Cursor.getDefaultCursor());
                     if (citaOk) {
-                        generarYAbrirPdf(target, descripcion);
+                        generarYAbrirPdf(target, descripcion, actualVet, CitasPanel.this);
                         JOptionPane.showMessageDialog(this, "Historial archivado y Cita completada. PDF generado.", "Excelente", JOptionPane.INFORMATION_MESSAGE);
                         recargarDatos();
                     } else {
@@ -376,41 +384,180 @@ public class CitasPanel extends JPanel {
         return isoDate;
     }
 
-    private void generarYAbrirPdf(Cita cita, String diagnostico) {
+    public static void generarYAbrirPdf(Cita cita, String diagnostico, Veterinario actualVet, Component parentComponent) {
         try {
             File pdfFile = File.createTempFile("informe_" + cita.getIdMascota() + "_" + System.currentTimeMillis(), ".pdf");
             pdfFile.deleteOnExit();
 
             Document document = new Document();
-            PdfWriter.getInstance(document, new FileOutputStream(pdfFile));
+            PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(pdfFile));
             document.open();
 
-            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 20, com.itextpdf.text.BaseColor.BLUE);
-            Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, com.itextpdf.text.BaseColor.DARK_GRAY);
-            Font pFont = FontFactory.getFont(FontFactory.HELVETICA, 12, com.itextpdf.text.BaseColor.BLACK);
+            // Configuración de Colores y Fuentes
+            BaseColor colorPrimario = new BaseColor(25, 90, 80); // Verde oscuro
+            BaseColor colorAcento = new BaseColor(168, 230, 207); // Verde pastel
+            BaseColor colorAcentoAzul = new BaseColor(135, 206, 250); // Azul pastel
+            BaseColor colorTextoOscuro = new BaseColor(50, 50, 50);
 
-            Paragraph title = new Paragraph("INFORME CLÍNICO - SALUSPET", titleFont);
+            Font fontTituloDoc = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, colorPrimario);
+            Font fontHeaderTabla = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, BaseColor.WHITE);
+            Font fontCellTabla = FontFactory.getFont(FontFactory.HELVETICA, 10, colorTextoOscuro);
+            Font fontCellNegrita = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, colorTextoOscuro);
+            Font fontDiagnostico = FontFactory.getFont(FontFactory.HELVETICA, 11, colorTextoOscuro);
+
+            // --- 1. CABECERA (LOGO Y DATOS) ---
+            PdfPTable headerTable = new PdfPTable(2);
+            headerTable.setWidthPercentage(100);
+            headerTable.setWidths(new float[]{1f, 2f});
+
+            try {
+                // Intentar cargar logo (la ruta asume que se ejecuta desde el jar/IDE)
+                java.net.URL logoUrl = CitasPanel.class.getResource("/images/logo_transparente.png");
+                if (logoUrl != null) {
+                    Image logo = Image.getInstance(logoUrl);
+                    logo.scaleToFit(120, 120);
+                    PdfPCell logoCell = new PdfPCell(logo);
+                    logoCell.setBorder(PdfPCell.NO_BORDER);
+                    logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                    logoCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+                    headerTable.addCell(logoCell);
+                } else {
+                    PdfPCell empty = new PdfPCell();
+                    empty.setBorder(PdfPCell.NO_BORDER);
+                    headerTable.addCell(empty);
+                }
+            } catch (Exception ex) {
+                PdfPCell empty = new PdfPCell();
+                empty.setBorder(PdfPCell.NO_BORDER);
+                headerTable.addCell(empty);
+            }
+
+            // Datos de la Clínica
+            PdfPCell clinicDataCell = new PdfPCell();
+            clinicDataCell.setBorder(PdfPCell.NO_BORDER);
+            clinicDataCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            clinicDataCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            
+            Paragraph clinicName = new Paragraph("CLÍNICA VETERINARIA SALUSPET", fontTituloDoc);
+            clinicName.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph clinicInfo = new Paragraph(
+                "C/ Falsa 123, 28000 Madrid\n" +
+                "Tel: 91 123 45 67\n" +
+                "Email: info@saluspet.es\n" +
+                "Web: www.saluspet.es", fontCellTabla
+            );
+            clinicInfo.setAlignment(Element.ALIGN_RIGHT);
+            clinicDataCell.addElement(clinicName);
+            clinicDataCell.addElement(clinicInfo);
+            headerTable.addCell(clinicDataCell);
+
+            document.add(headerTable);
+
+            // Separador
+            document.add(new Chunk(new LineSeparator(1f, 100f, colorPrimario, Element.ALIGN_CENTER, -5f)));
+            document.add(new Paragraph("\n"));
+
+            // --- 2. TÍTULO DEL DOCUMENTO ---
+            Paragraph title = new Paragraph("INFORME MÉDICO VETERINARIO", fontTituloDoc);
             title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingAfter(20);
+            title.setSpacingAfter(15);
             document.add(title);
 
-            document.add(new Paragraph("Veterinario Responsable: " + actualVet.getNombre() + " (" + actualVet.getEspecialidad() + ")", headerFont));
-            document.add(new Paragraph("Fecha de la Consulta: " + formatFechaEspanol(cita.getFecha()) + " a las " + cita.getHora(), headerFont));
-            document.add(new Paragraph("\n"));
+            // --- 3. TABLA DE DATOS DEL PACIENTE ---
+            PdfPTable infoTable = new PdfPTable(4);
+            infoTable.setWidthPercentage(100);
+            infoTable.setSpacingAfter(20);
+            infoTable.setWidths(new float[]{1.2f, 2f, 1.2f, 2f});
+
+            // Función auxiliar para celdas
+            java.util.function.BiConsumer<String, String> addInfoRow = (label, value) -> {
+                PdfPCell cellL = new PdfPCell(new Phrase(label, fontCellNegrita));
+                cellL.setBackgroundColor(colorAcentoAzul); // Fondo azul pastel suave
+                cellL.setBorderColor(BaseColor.LIGHT_GRAY);
+                cellL.setPadding(6);
+                
+                PdfPCell cellV = new PdfPCell(new Phrase(value != null ? value : "N/D", fontCellTabla));
+                cellV.setBorderColor(BaseColor.LIGHT_GRAY);
+                cellV.setPadding(6);
+                
+                infoTable.addCell(cellL);
+                infoTable.addCell(cellV);
+            };
 
             String mNombre = cita.getNombreMascota() != null && !cita.getNombreMascota().isEmpty() ? cita.getNombreMascota() : "ID: " + cita.getIdMascota();
-            document.add(new Paragraph("Paciente: " + mNombre, pFont));
-            document.add(new Paragraph("Asunto Inicial: " + (cita.getTitulo() != null ? cita.getTitulo() : "No especificado"), pFont));
+            String motivo = cita.getTitulo() != null ? cita.getTitulo() : "No especificado";
+
+            addInfoRow.accept("Paciente:", mNombre);
+            
+            // Format date locally
+            String fechaConsult = cita.getFecha();
+            if (fechaConsult != null && fechaConsult.contains("-")) {
+                try {
+                    String dPart = fechaConsult.contains("T") ? fechaConsult.split("T")[0] : fechaConsult;
+                    String[] parts = dPart.split("-");
+                    if (parts.length >= 3) {
+                        fechaConsult = parts[2] + "/" + parts[1] + "/" + parts[0];
+                    }
+                } catch(Exception ignored) {}
+            }
+            
+            addInfoRow.accept("Fecha Consulta:", (fechaConsult != null ? fechaConsult : "-") + " " + (cita.getHora() != null ? cita.getHora() : ""));
+            
+            addInfoRow.accept("Veterinario:", actualVet.getNombre() + " (" + actualVet.getEspecialidad() + ")");
+            addInfoRow.accept("Motivo:", motivo);
+
+            document.add(infoTable);
+
+            // --- 4. DIAGNÓSTICO Y TRATAMIENTO ---
+            PdfPTable diagHeaderTable = new PdfPTable(1);
+            diagHeaderTable.setWidthPercentage(100);
+            PdfPCell diagHeaderCell = new PdfPCell(new Phrase("DIAGNÓSTICO Y TRATAMIENTO CLÍNICO", fontHeaderTabla));
+            diagHeaderCell.setBackgroundColor(colorPrimario);
+            diagHeaderCell.setPadding(8);
+            diagHeaderCell.setBorder(PdfPCell.NO_BORDER);
+            diagHeaderTable.addCell(diagHeaderCell);
+            document.add(diagHeaderTable);
+            
             document.add(new Paragraph("\n"));
 
-            Paragraph diagTitle = new Paragraph("DIAGNÓSTICO Y TRATAMIENTO", headerFont);
-            diagTitle.setSpacingAfter(10);
-            document.add(diagTitle);
-
-            Paragraph diagBody = new Paragraph(diagnostico, pFont);
+            Paragraph diagBody = new Paragraph(diagnostico, fontDiagnostico);
+            diagBody.setAlignment(Element.ALIGN_JUSTIFIED);
+            diagBody.setSpacingAfter(30);
             document.add(diagBody);
 
-            document.add(new Paragraph("\n\nFirma:\n______________________\n" + actualVet.getNombre(), pFont));
+            // --- 5. FIRMA Y PIE DE PÁGINA (Posición Absoluta al fondo) ---
+            PdfPTable footerTable = new PdfPTable(1);
+            footerTable.setTotalWidth(document.right() - document.left());
+            
+            PdfPCell signatureCell = new PdfPCell();
+            signatureCell.setBorder(PdfPCell.NO_BORDER);
+            signatureCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            
+            Paragraph firmLine = new Paragraph("____________________________________", fontCellNegrita);
+            firmLine.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph firmName = new Paragraph("Fdo: " + actualVet.getNombre(), fontCellNegrita);
+            firmName.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph firmEsp = new Paragraph("Especialidad: " + actualVet.getEspecialidad(), fontCellTabla);
+            firmEsp.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph firmColeg = new Paragraph("Nº Colegiado: " + actualVet.getIdVeterinario() + "VET", fontCellTabla); // Simulación de colegiado
+            firmColeg.setAlignment(Element.ALIGN_RIGHT);
+
+            signatureCell.addElement(firmLine);
+            signatureCell.addElement(firmName);
+            signatureCell.addElement(firmEsp);
+            signatureCell.addElement(firmColeg);
+            
+            // Añadir nota legal
+            signatureCell.addElement(new Paragraph("\n"));
+            signatureCell.addElement(new Chunk(new LineSeparator(0.5f, 100f, BaseColor.LIGHT_GRAY, Element.ALIGN_CENTER, -5f)));
+            Paragraph legalInfo = new Paragraph("Este informe es de carácter estrictamente confidencial. Emitido por Clínica Veterinaria SalusPet para uso exclusivo del propietario del paciente.", FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8, BaseColor.GRAY));
+            legalInfo.setAlignment(Element.ALIGN_CENTER);
+            signatureCell.addElement(legalInfo);
+            
+            footerTable.addCell(signatureCell);
+            
+            // Escribir la tabla al final de la página
+            footerTable.writeSelectedRows(0, -1, document.left(), document.bottom() + footerTable.getTotalHeight() + 50, writer.getDirectContent());
 
             document.close();
 
@@ -419,7 +566,10 @@ public class CitasPanel extends JPanel {
             }
         } catch (Exception e) {
             System.err.println("Fallo al generar PDF: " + e.getMessage());
-            JOptionPane.showMessageDialog(this, "No se pudo generar o abrir el archivo PDF:\n" + e.getMessage(), "Error PDF", JOptionPane.WARNING_MESSAGE);
+            e.printStackTrace();
+            if (parentComponent != null) {
+                JOptionPane.showMessageDialog(parentComponent, "No se pudo generar o abrir el archivo PDF:\n" + e.getMessage(), "Error PDF", JOptionPane.WARNING_MESSAGE);
+            }
         }
     }
 }

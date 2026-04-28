@@ -4,6 +4,9 @@ import com.google.gson.annotations.SerializedName;
 
 public class Historial {
 
+    @SerializedName("idHistorial")
+    private int idHistorial;
+
     @SerializedName("idMascota")
     private int idMascota;
 
@@ -31,6 +34,7 @@ public class Historial {
         this.urlDocumento = urlDocumento;
     }
 
+    public int getIdHistorial() { return idHistorial; }
     public int getIdMascota() { return idMascota; }
     public int getIdVeterinario() { return idVeterinario; }
     public String getTipoEvento() { return tipoEvento; }

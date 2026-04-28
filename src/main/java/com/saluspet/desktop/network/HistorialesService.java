@@ -36,4 +36,23 @@ public class HistorialesService {
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> response.statusCode() >= 200 && response.statusCode() < 300);
     }
+
+    public CompletableFuture<java.util.List<Historial>> obtenerHistorialesMascotaAsync(int idMascota) {
+        String targetUrl = AuthService.API_BASE_URL.replace("/auth", "/HistorialClinico/mascota/" + idMascota);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(targetUrl))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() == 200) {
+                        java.lang.reflect.Type listType = new com.google.gson.reflect.TypeToken<java.util.List<Historial>>(){}.getType();
+                        return gson.fromJson(response.body(), listType);
+                    }
+                    return new java.util.ArrayList<>();
+                });
+    }
 }
