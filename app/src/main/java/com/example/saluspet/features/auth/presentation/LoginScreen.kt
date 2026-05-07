@@ -35,13 +35,18 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
-    val context = LocalContext.current // ⬅️ Necesario para acceder a la memoria del teléfono
+    val context = LocalContext.current // Necesario para acceder a la memoria del teléfono
 
     var isLoginMode by remember { mutableStateOf(true) }
     var nombre by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+
+    // --- VARIABLES DEL CAPTCHA MATEMÁTICO ---
+    var captchaNum1 by remember { mutableStateOf((1..10).random()) }
+    var captchaNum2 by remember { mutableStateOf((1..10).random()) }
+    var captchaInput by remember { mutableStateOf("") }
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -149,6 +154,45 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- CAPTCHA VISUAL (Solo en Registro) ---
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Verificación anti-bots",
+                        fontSize = 12.sp,
+                        color = TextColorGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "¿Cuánto es $captchaNum1 + $captchaNum2?",
+                        fontSize = 16.sp,
+                        color = TextColorDark,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = captchaInput,
+                        onValueChange = { captchaInput = it },
+                        label = { Text("Respuesta") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -169,7 +213,6 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                             } else {
                                 val response = RetrofitClient.apiService.loginUsuario(LoginRequest(email, password))
                                 if (response.isSuccessful) {
-                                    // 👇 GUARDAMOS EL ID DEL USUARIO PARA LAS MASCOTAS
                                     val usuarioLogueado = response.body()
                                     if (usuarioLogueado != null) {
                                         val sharedPreferences = context.getSharedPreferences("perfil_saluspet", Context.MODE_PRIVATE)
@@ -182,6 +225,20 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                             }
                         } else {
                             // LÓGICA DE REGISTRO
+
+                            // 1. Validar el CAPTCHA primero
+                            val expectedAnswer = (captchaNum1 + captchaNum2).toString()
+                            if (captchaInput.trim() != expectedAnswer) {
+                                errorMessage = "La respuesta del CAPTCHA es incorrecta. Inténtalo de nuevo."
+                                // Regeneramos la suma para el siguiente intento
+                                captchaNum1 = (1..10).random()
+                                captchaNum2 = (1..10).random()
+                                captchaInput = ""
+                                isLoading = false
+                                return@launch // Detenemos la ejecución aquí
+                            }
+
+                            // 2. Validar los datos del formulario
                             if (nombre.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
                                 if (password == confirmPassword) {
                                     val requestRegistro = RegisterRequest(
@@ -198,6 +255,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                         isLoginMode = true
                                         password = ""
                                         confirmPassword = ""
+                                        captchaInput = "" // Limpiamos el captcha
                                     } else {
                                         errorMessage = "Error al registrar la cuenta. Verifica los datos."
                                     }
@@ -256,6 +314,13 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     isLoginMode = !isLoginMode
                     errorMessage = null
                     successMessage = null
+
+                    // Al cambiar de modo, regeneramos el captcha por si acaso
+                    if (!isLoginMode) {
+                        captchaNum1 = (1..10).random()
+                        captchaNum2 = (1..10).random()
+                        captchaInput = ""
+                    }
                 }
             )
         }

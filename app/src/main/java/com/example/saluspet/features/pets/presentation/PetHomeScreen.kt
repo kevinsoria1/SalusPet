@@ -18,8 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.outlined.* // ⬅️ IMPRESCINDIBLE PARA LOS NUEVOS DISEÑOS
-import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.* import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -257,12 +256,11 @@ fun InfoChip(text: String) {
     }
 }
 
-// 🚀 AQUI EMPIEZA LA NUEVA VISTA DE DETALLE REESTRUCTURADA
+// 🚀 VISTA DE DETALLE REESTRUCTURADA
 @Composable
 fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onUpdatePhoto: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
-        // 1. Cabecera con Foto y Botón Atrás
         Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
             ImagenDecodificada(fotoString = pet.fotoBase64, modifier = Modifier.fillMaxSize(), fallbackSize = 100)
             IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
@@ -271,16 +269,13 @@ fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: ()
         }
 
         Column(modifier = Modifier.padding(24.dp)) {
-            // 2. Título (Nombre)
             Text(pet.nombre, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. Tarjeta de Información Cuadriculada (NUEVA)
             TarjetaInformacionMascota(pet = pet)
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // 4. Botones Compactos Inline (NUEVOS)
             BotonesAccionMascota(
                 onCambiarFoto = onUpdatePhoto,
                 onEditar = onEdit,
@@ -290,8 +285,7 @@ fun PetDetailView(pet: Pet, onBack: () -> Unit, onEdit: () -> Unit, onDelete: ()
     }
 }
 
-// 🧩 NUEVO COMPONENTE: TARJETA DE INFORMACIÓN LIMPIA
-// 🧩 NUEVO COMPONENTE: TARJETA DE INFORMACIÓN PERFECTAMENTE SIMÉTRICA
+// 🧩 TARJETA DE INFORMACIÓN PERFECTAMENTE SIMÉTRICA
 @Composable
 fun TarjetaInformacionMascota(pet: Pet) {
     Card(
@@ -313,7 +307,6 @@ fun TarjetaInformacionMascota(pet: Pet) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Columna Izquierda
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -322,7 +315,6 @@ fun TarjetaInformacionMascota(pet: Pet) {
                     InfoRowItem(icono = Icons.Outlined.CalendarMonth, etiqueta = "Nacimiento", valor = pet.edad)
                 }
 
-                // Línea divisoria central super fina para dar más elegancia
                 Box(
                     modifier = Modifier
                         .width(1.dp)
@@ -332,7 +324,6 @@ fun TarjetaInformacionMascota(pet: Pet) {
 
                 Spacer(modifier = Modifier.width(20.dp))
 
-                // Columna Derecha
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -346,13 +337,12 @@ fun TarjetaInformacionMascota(pet: Pet) {
     }
 }
 
-// 🧩 NUEVO COMPONENTE: ITEM APILADO PARA EVITAR ASIMETRÍAS
 @Composable
 fun InfoRowItem(icono: ImageVector, etiqueta: String, valor: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(
             shape = CircleShape,
-            color = PastelBlueBackgroundLighter, // Fondo sutil para el icono
+            color = PastelBlueBackgroundLighter,
             modifier = Modifier.size(38.dp)
         ) {
             Icon(
@@ -370,8 +360,7 @@ fun InfoRowItem(icono: ImageVector, etiqueta: String, valor: String) {
     }
 }
 
-// 🧩 NUEVO COMPONENTE: BOTONES COMPACTOS CON FONDO TINTADO
-// 🧩 NUEVO COMPONENTE: BOTONES COMPACTOS CON FONDO TINTADO (EDITAR EN AMARILLO)
+// 🧩 BOTONES COMPACTOS CON FONDO TINTADO
 @Composable
 fun BotonesAccionMascota(
     onCambiarFoto: () -> Unit,
@@ -383,7 +372,6 @@ fun BotonesAccionMascota(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 🟢 Botón Foto (Tinte Verde)
         OutlinedButton(
             onClick = onCambiarFoto,
             modifier = Modifier.weight(1f).height(56.dp),
@@ -397,7 +385,6 @@ fun BotonesAccionMascota(
             Icon(Icons.Outlined.CameraAlt, contentDescription = "Cambiar Foto", modifier = Modifier.size(26.dp))
         }
 
-        // 🟡 Botón Editar (Tinte Amarillo Pastel)
         val colorEditar = Color(0xFFFBC02D)
         OutlinedButton(
             onClick = onEditar,
@@ -405,14 +392,13 @@ fun BotonesAccionMascota(
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, colorEditar.copy(alpha = 0.5f)),
             colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = colorEditar.copy(alpha = 0.1f), // Fondo amarillento clarito
-                contentColor = colorEditar // Icono amarillo mostaza
+                containerColor = colorEditar.copy(alpha = 0.1f),
+                contentColor = colorEditar
             )
         ) {
             Icon(Icons.Outlined.Edit, contentDescription = "Editar", modifier = Modifier.size(26.dp))
         }
 
-        // 🔴 Botón Eliminar (Tinte Rojo)
         OutlinedButton(
             onClick = onEliminar,
             modifier = Modifier.weight(1f).height(56.dp),
@@ -444,6 +430,20 @@ fun MascotaDialogPremium(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet
     val datePickerState = rememberDatePickerState()
 
     val fieldBackgroundColor = Color(0xFFF8F9FA)
+
+    // 🤖 --- LÓGICA DEL CAPTCHA --- 🤖
+    val esNuevaMascota = petExistente == null
+    // Generamos dos números aleatorios entre 1 y 10
+    var num1 by remember { mutableStateOf((1..10).random()) }
+    var num2 by remember { mutableStateOf((1..10).random()) }
+    var captchaInput by remember { mutableStateOf("") }
+
+    // Validamos si la respuesta es correcta. Si estamos editando, siempre es 'true'
+    val captchaCorrecto = if (esNuevaMascota) {
+        captchaInput.trim() == (num1 + num2).toString()
+    } else {
+        true
+    }
 
     LaunchedEffect(petExistente) {
         if (petExistente != null && petExistente.edad.contains("-")) {
@@ -485,7 +485,7 @@ fun MascotaDialogPremium(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet
                     Icon(Icons.Filled.Pets, contentDescription = null, tint = PastelGreenPrimary, modifier = Modifier.padding(16.dp))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(if (petExistente == null) "Nueva Mascota" else "Editar Mascota", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
+                Text(if (esNuevaMascota) "Nueva Mascota" else "Editar Mascota", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextColorDark)
                 Spacer(modifier = Modifier.height(24.dp))
 
                 OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre de la mascota") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
@@ -514,13 +514,59 @@ fun MascotaDialogPremium(petExistente: Pet?, onDismiss: () -> Unit, onSave: (Pet
                     )
                     OutlinedTextField(value = peso, onValueChange = { peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = fieldBackgroundColor, unfocusedContainerColor = fieldBackgroundColor, focusedBorderColor = PastelGreenPrimary, unfocusedBorderColor = Color.Transparent))
                 }
+
+                // 🤖 --- INTERFAZ DEL CAPTCHA (Solo al crear) --- 🤖
+                if (esNuevaMascota) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = PastelBlueBackgroundLighter),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Verificación de seguridad",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = TextColorDark
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "¿$num1 + $num2?",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PastelGreenPrimary
+                                )
+                                OutlinedTextField(
+                                    value = captchaInput,
+                                    onValueChange = { if (it.length <= 3) captchaInput = it }, // Máximo 3 dígitos
+                                    label = { Text("Resultado") },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White,
+                                        focusedBorderColor = if (captchaCorrecto) PastelGreenPrimary else Color.Red.copy(alpha = 0.5f),
+                                        unfocusedBorderColor = Color.Transparent
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(32.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancelar", color = TextColorGray, fontWeight = FontWeight.Bold) }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = { onSave(Pet(id = petExistente?.id ?: System.currentTimeMillis(), nombre = nombre, especie = especie, sexo = sexo, edad = edad, peso = peso, fotoBase64 = petExistente?.fotoBase64)) },
-                        enabled = nombre.isNotBlank() && especie.isNotBlank() && sexo.isNotBlank(),
+                        // 🔒 El botón solo se habilita si los datos están llenos Y el captcha es correcto
+                        enabled = nombre.isNotBlank() && especie.isNotBlank() && sexo.isNotBlank() && captchaCorrecto,
                         colors = ButtonDefaults.buttonColors(containerColor = PastelGreenPrimary), shape = RoundedCornerShape(16.dp)
                     ) { Text("Guardar", color = TextColorDark, fontWeight = FontWeight.Bold) }
                 }

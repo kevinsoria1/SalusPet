@@ -4,11 +4,13 @@ import com.example.saluspet.features.auth.data.LoginRequest
 import com.example.saluspet.features.auth.data.RegisterRequest
 import com.example.saluspet.features.auth.data.Usuario
 import com.example.saluspet.features.calendar.data.Cita
+import com.example.saluspet.features.calendar.data.ClinicaCercana
+import com.example.saluspet.features.calendar.data.Veterinario
 import com.example.saluspet.features.clinics.data.HistorialClinico
 import com.example.saluspet.features.pets.data.Mascota
 import retrofit2.Response
 import retrofit2.http.Body
-import retrofit2.http.DELETE // ⬅️ Añadido para poder borrar
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -56,6 +58,8 @@ interface SalusPetApiService {
     @GET("api/Citas/usuario/{idUsuario}")
     suspend fun obtenerCitasUsuario(@Path("idUsuario") idUsuario: Int): Response<List<Cita>>
 
+    @GET("veterinarios")
+    suspend fun getVeterinarios(): List<Veterinario>
     @POST("api/Citas")
     suspend fun registrarCita(@Body cita: Cita): Response<Cita>
 
@@ -65,7 +69,9 @@ interface SalusPetApiService {
     // 🆕 NUEVO: Borrar una cita de la agenda
     @DELETE("api/Citas/{id}")
     suspend fun eliminarCita(@Path("id") idCita: Int): Response<Unit>
-
+    // Dentro de SalusPetApiService.kt
+    @GET("clinics") // O la ruta que hayas puesto en tu NestJS
+    suspend fun getClinicas(): retrofit2.Response<List<ClinicaCercana>>
 
     // ==========================================
     // 🏥 HISTORIAL CLÍNICO
